@@ -1,0 +1,3986 @@
+Oyun Kartı Bileşeni Teknik Şartname
+
+---
+
+1) Amaç & Kapsam
+
+Her aktif oyun oturumu için bir kart render’lanır.
+
+Kart; kalan süreyi bir zaman halkası (ring) ile gösterir; + menüsü ile süre uzatma, duraklat/devam, detay paneli (log) ve bitir (tahsil/sona erdir) akışlarını yönetir.
+
+Tüm veriler canlı güncellenir (üst uygulamadan – shell state).
+
+Kart bileşeni tekil oturuma özgüdür; her yeni oturumda yeni kart render’lanır, kartlar birbirinden bağımsız çalışır. Oturum kapatıldığında kart UI’dan fade+shrink ile kaldırılır, state shell tarafında “finished” veya “expired” olarak tutulur. Kart state değişimleri (extend, undo, pause, resume, finish) yalnızca CustomEvent’ler üzerinden shell’e iletilir.
+
+Kabul kriterleri:
+
+Her oturum için ayrı kart oluşturulmalı.
+
+Kart kapanışı doğru event ile shell’e bildirilmelidir.
+
+UI’da kart kapanışı animasyonlu olmalı, ani kaybolma olmayacak.
+
+
+
+---
+
+2) Tasarım Token’ları & Tema
+
+Renkler: Ok (yeşil), Uyarı (turuncu), Tehlike (kırmızı), Duraklatılmış (mavi).
+
+Arkaplan: mor–indigo–teal gradient + glassmorphism panel efekti.
+
+Gölge: dış gölge (elevation) + iç gölge (inset).
+
+Yazı: sistem sans-serif; başlık 700–800, alt satırlar 400–600.
+
+İkonlar: inline SVG, tek tip stroke kalınlığı (outline).
+
+Animasyon hızı: 150–250 ms (ease-out), mikro etkileşimlerde 90–120 ms.
+
+Blink/Glow frekansı 3 Hz altında tutulur (WCAG uyumlu). prefers-reduced-motion aktifse tüm animasyonlar sade, statik görünümle gösterilir.
+
+Renk tanımları:
+
+--ok:#16a34a
+
+--warn:#f59e0b
+
+--danger:#dc2626
+
+--paused:#2563eb
+
+--expired:#6b7280
+
+
+Kabul kriterleri:
+
+Renk ve tipografi tüm UI’da tutarlı kullanılmalı.
+
+Animasyon süreleri ve hızları global tanımlı olmalı.
+
+Erişilebilirlik için tüm ikonlar aria-label ile etiketlenmeli.
+
+
+
+---
+
+3) Kart Boyutu & Grid
+
+Boyut: Dikey; ~360–380 px genişlik, 560–600 px yükseklik.
+
+Grid hedefi: Laptop’ta 5 sütun × 2 sıra.
+
+Köşe: 20–22 px radius.
+
+İç boşluk: dış kenarlara ≥16 px.
+
+Responsive: genişlik küçüldükçe ring yarıçapı ve ikon boyutları orantılı küçülür.
+
+Hit target tüm interaktif alanlarda ≥40×40 px olmalıdır.
+
+Kabul kriterleri:
+
+Grid yeniden boyutlandığında kartlar kırılmadan dizilmeli.
+
+Ring ve ikonlar ekran boyutuna göre otomatik ölçeklenmeli.
+
+Tüm etkileşim alanları WCAG standartlarına uygun hit target büyüklüğünde olmalı.
+
+
+
+---
+
+4) Üst Başlık (Head)
+
+Sol: Avatar (56–60 px daire, beyaz sınır).
+
+Orta:
+
+Çocuk adı: 18 px, 700–800; tek satır, taşarsa …
+
+Alt satır: ebeveyn adı + Kid ID (12–13 px).
+
+Kid ID formatı: “001”, “002”… sıfır dolgulu, kopyalanabilir.
+
+Hover: hafif çerçeve; Click → panoya kopyala → “Kopyalandı” toast.
+
+
+Sağ üst – Durum İstihbaratı (~14–18 px iç boşluk):
+
+Devam Ediyor: küçük yeşil dolu daire + metin.
+
+Uzatma: Devam Ediyor’un alt satırı olarak amber dolu daire + “+X dk uzatma”.
+
+Süre Doldu: kırmızı dolu daire + “Süre Doldu” (görünürken diğer satırlar gizlenir).
+
+
+Kabul kriterleri:
+
+Kid ID her zaman artan sayaç ile üretilmeli ve sıfırlanmamalı.
+
+Kid ID kopyalandığında toast çıkmalı ve log’a işlenmeli.
+
+Durum satırları hiyerarşik çalışmalı: “Süre Doldu” çıktığında diğer satırlar gizlenmeli.
+
+
+
+---
+
+5) Zaman Halkası (Ring)
+
+Konum: Kartın ortası; canvas üzerinde çizim.
+
+Geometri: R ≈ 90–100 px, stroke ≈ 14 px, başlangıç açısı –90°.
+
+Değer: frac = clamp(leftMin/60, 0, 1) kadar arc.
+
+Taban: düşük opak gri; lineCap=round.
+
+Aktif arc: eşik rengi + gradient (örn. yeşil→açık yeşil) + inner glow.
+
+Kritik (≤5 dk): uçta küçük parıltı/nefes animasyonu.
+
+Saniye şeridi: Ring’in iç bileziği ile merkez metin arasına ince bant olarak çizilir, 60 s periyotta 360° döner. Paused durumda durur, expired durumda kaybolur.
+
+Kabul kriterleri:
+
+Ring başlangıç açısı her zaman -90° (üst noktadan) olmalı.
+
+Kritik eşik 5 dk altına inince nefes animasyonu başlatılmalı.
+
+Saniye şeridi ring ile senkron çalışmalı ve pause’da durmalı.
+
+Render gecikmesi / yeniden boyutlandırma sonrası senkronizasyon” konusuna dair zamanlama (ör. requestAnimationFrame veya setTimeout 20 ms gecikme) yönergesi yok.
+
+Tarayıcı render sırasına bağlı asenkron sorunlar için bir “fallback init routine” tanımı (ör. onResize, onMount callback’i) belirtilmemiş.
+
+
+---
+
+
+6) Renk Eşikleri & Durum Sınıfları
+
+leftMin > 15 → ok (yeşil).
+6–15 → warn (turuncu).
+1–5 → danger (kırmızı + hafif blink).
+paused === true → paused (mavi; ring gizli, overlay açık).
+
+Sınıf, kart iç gölgesi ve ring rengini belirler.
+
+Ek detaylar:
+
+Expired (leftMin ≤ 0) durumunda ring sıfırlanır, progress 0 olur, yalnız “Süre Doldu” rozeti görünür.
+
+Blink frekansı 3 Hz’i geçmez (göz rahatsızlığı önlenir).
+
+prefers-reduced-motion aktifse blink yerine sabit renk vurgusu gösterilir.
+
+Pause modundayken renk değişimleri yapılmaz, kart freeze konumunda kalır.
+
+
+Kabul kriterleri:
+
+[ ] Eşik geçişlerinde renk sınıfları anında güncellenir.
+
+[ ] Expired durumda yalnız kırmızı rozet görünür.
+
+[ ] Pause sırasında ring ve glow gizlenir, yalnız overlay görünür.
+
+
+
+---
+
+7) Duraklat / Devam (Overlay)
+
+Hover (desktop): Ring içine girince pause ikonlu cam buton belirir.
+Mobil: İlk dokunuş ikonu gösterir, ikinci dokunuş pause yapar.
+
+Pause (click): Ring fade-out; ortada “|| Duraklatıldı” overlay scale-in ile açılır; kart paused sınıfı alır.
+Resume: Kart paused iken overlay üzerinde “▶ Devam et” görünür; click → ring geri gelir, overlay kapanır, paused = false.
+
+Boyut & Görünürlük:
+
+Pause ikonu ring merkezinde, dairesel cam buton içinde görünür.
+
+İkon boyutu ring çapının %25–30’u olacak şekilde belirgin ama merkezi metni tamamen kapatmayacak.
+
+Overlay çıktığında kalan süre sayısı gizlenir, yerine “|| Duraklatıldı” yazısı çıkar.
+
+İkon kontrastı yüksek, beyaz stroke/dolgu ile net olmalı.
+
+Mobilde aynı orantı korunur; overlay ve ikon otomatik ölçeklenir.
+
+
+Ek detaylar:
+
+Overlay üzerinde aria-label zorunludur: “Duraklatıldı” / “Devam et”.
+
+Pause sonrası sayaç tamamen durur, resume sonrası kaldığı yerden devam eder.
+
+Pause sırasında kritik glow, auto-scroll ve priority sorting durdurulur.
+
+
+Kabul kriterleri:
+
+[ ] Pause → ring gizlenir, overlay açılır.
+
+[ ] Resume → ring geri gelir, süre kaldığı yerden devam eder.
+
+[ ] Erişilebilirlik etiketleri eksiksizdir.
+
+
+
+---
+
+8) + Menüsü – Geometri (Baloncuklar)
+
+Referans: Ring merkezi (cx, cy).
+Dağılım: Açıldığında tam 360°’ye eşit aralık; n baloncuk → 360/n°.
+
+Konum formülü:
+radius = R + GAP (GAP ≥ 44 px; ring’le temas yok).
+(x, y) = (cx + cos(rad)*radius, cy + sin(rad)*radius).
+
+Zorunlu boşluk: Baloncukların görsel sınırı ring dış çembere ≥16 px uzak.
+
+Etiketler: “+5 dk”, “+10 dk”, “+15 dk”, “+30 dk”, “+45 dk”, “+60 dk”, “Özel”.
+Metin formatı: daima “+X dk”.
+
+Ek detaylar:
+
+Tüm baloncuklar aria-label ile etiketlenir (“+15 dakika ekle”).
+
+Özel baloncuk input’u yalnız sayısal kabul eder (1–180).
+
+Tooltip desteği opsiyonel ama tavsiye edilir.
+
+
+Kabul kriterleri:
+
+[ ] Baloncuklar 360° eşit dağılır.
+
+[ ] Ring ile baloncuk arasında GAP ≥44 px korunur.
+
+[ ] Etiketler daima “+X dk” formatında olmalıdır.
+
+
+
+---
+
+9) + Menüsü – Aç/Kapa & Animasyon
+
+Açılış: Baloncuklar merkezde başlar → 70 ms aralıklarla sırayla scale(.7→1) + translate ile spiral “pıt pıt pıt” yayılır.
+Kapanış: Dış tık veya + tekrar → hepsi merkeze fade+scale ile döner.
+Otomatik: Pasif ~7 s sonra fade+scale ile kapanır.
+
+Kural: Menü açıkken yalnız baloncuk tıklaması onay akışını başlatır.
+
+Ek detaylar:
+
+Menü açıkken dış click ile kapanma debounce edilir (örn. 150 ms).
+
+Menü animasyonları GPU hızlandırmalı transform/opacity ile yapılır.
+
+prefers-reduced-motion aktifse animasyonlar sade fade ile gösterilir.
+
+
+Kabul kriterleri:
+
+[ ] Açılış animasyonu sırayla ve pıt pıt efektiyle gerçekleşir.
+
+[ ] Menü 7 s içinde otomatik kapanır.
+
+[ ] Menü açıkken kart dışı tık menüyü kapatır.
+
+
+
+---
+
+10) Uzatma Onayı, Undo & Log
+
+Akış: Balona tık → mini onay: “+15 dk eklensin mi?”.
+Evet: leftMin += delta; çıkış saati güncellenir; toast: “+X dk eklendi”.
+Undo: Aynı balona tekrar (üzerinde ↶ rozet varken) → geri al; toast: “+X dk geri alındı”.
+Undo stack: kart başına maks 2 adım.
+Log: Detay paneline “[14:37:12] +15 dk uzatıldı” satırı eklenir.
+Durum alanı: Sağ üstte “+X dk uzatma” görünür; expired olursa gizlenir; undo olursa kaldırılır.
+
+Ek detaylar:
+
+Undo yalnızca son uzatma için geçerlidir, 30 sn içinde kullanılabilir.
+
+Undo tek kullanımlıktır; 1 uzatma için 1 geri alma hakkı vardır.
+
+Yönetici rolü hariç, geçmiş uzatmalar geri alınamaz.
+
+Her uzatma/undo toast ile bildirilir ve log’a kaydedilir.
+
+Event’ler:
+
+card:extend {id, addMin, newLeft, newEnd}
+
+card:undo {id, delta, newLeft, newEnd}
+
+
+
+Kabul kriterleri:
+
+[ ] Uzatma sonrası bitiş saati anında güncellenir.
+
+[ ] Undo yalnız son uzatma için ve 30 sn içinde geçerlidir.
+
+[ ] Her uzatma/undo hem toast hem log’a düşmelidir.
+
+
+---
+
+11) İşlem Şeridi (Detay, +, Bitir)
+
+Konum: Ring altı – progress üstü; 3 ikon eş aralıkla hizalanır.
+
+İçerik & Davranış
+
+Sol: Detay (ℹ️) → Sağdan slide-in panel açar. Panel kayma süresi 0.25–0.3 s, cam blur arka plan, üstte başlık + kapatma ikonu.
+
+Orta: + → Baloncuk menüsünü aç/kapatır. Menü açıkken + ikonu döner (90° rotasyon) ve hafif glow alır.
+
+Sağ: Bitir (✓) → Onay modalı açar: “Bu oturumu bitirmek istiyor musunuz?” Evet → kart kapanır ve sessionFinished event’i tetiklenir. Hayır → modal kapanır, kart kalır.
+
+
+Stil
+
+Tüm ikonlar eş boyut (32×32 px), outline çizgiler tek kalınlıkta (1.5–2 px stroke).
+
+Hover’da micro-shadow + scale(.96).
+
+✓ ikonu biraz daha dolgun; ℹ️ ikonu stroke ile hafif vurgulu.
+
+İkon renkleri kartın durum sınıfına göre (ok=yeşil, warn=turuncu, danger=kırmızı, paused=mavi, expired=gri) uyarlanır.
+
+
+Güvenlik Boşluğu (Zorunlu)
+
+Üç ikon da ring dış çembere asla temas etmez.
+
+Min. 16 px boşluk korunur (ring stroke + ikon hitbox arasında).
+
+Mobilde otomatik küçülür ama yine ≥12 px boşluk korunur.
+
+
+Erişilebilirlik
+
+Her ikon aria-label ile etiketlenir:
+
+“Detayları Aç”
+
+“Süre Uzatma Menüsü”
+
+“Oturumu Bitir”
+
+
+Modal focus-trap ile açılır, ESC veya “İptal” ile kapanır.
+
+
+Kabul Kriterleri
+
+[ ] Detay ikonu tıklandığında panel sağdan kayarak açılır ve log içeriğini gösterir.
+
+[ ] + ikonu baloncuk menüsünü açar/kapatır, animasyon ve glow doğru çalışır.
+
+[ ] Bitir ikonu onay modalı olmadan oturumu bitirmez.
+
+[ ] Ring ile ikonlar arasında min. 16 px güvenlik boşluğu korunur.
+
+[ ] Tüm ikonlar erişilebilirlik etiketlerine sahiptir.
+
+
+11) İşlem Şeridi (Detay, +, Bitir)
+
+Konum: Ring altı – progress üstü; 3 ikon eş aralıkla hizalanır.
+
+İçerik & Fonksiyonlar:
+
+Sol (ℹ️ Detay): Sağdan slide-in panel açar. Panel cam blur arka planlı, animasyon süresi 250–300 ms, üstte başlık ve kapatma ikonu vardır. Panel scrollable ve log içeriğini gösterir.
+
+Orta (+): Baloncuk menüsünü açar/kapatır. Açıldığında + ikonu 90° döner, hafif glow alır. Menü kapanınca ikon eski haline döner.
+
+Sağ (✓ Bitir): Onay modalı açar: “Bu oturumu bitirmek istiyor musunuz?”.
+
+Evet: Kart kapanır, shell’e sessionFinished {id} event’i gönderilir.
+
+Hayır: Modal kapanır, kart görünümde kalır.
+
+
+
+Stil:
+
+Tüm ikonlar eş boyut (32×32 px), outline çizgiler 1.5–2 px stroke.
+
+Hover: micro-shadow + scale(.96).
+
+✓ ikonu biraz dolgun, ℹ️ ikonu stroke ile hafif belirgin.
+
+İkon renkleri kartın durum sınıfına (ok/yeşil, warn/turuncu, danger/kırmızı, paused/mavi, expired/gri) uyumlu.
+
+
+Güvenlik & Erişilebilirlik:
+
+Üç ikon da ring dış çembere asla temas etmez; minimum 16 px güvenlik boşluğu korunur. Mobilde otomatik küçülse bile ≥12 px boşluk bırakılır.
+
+Bitir (✓) işlemi her zaman onay modalı üzerinden yapılır; doğrudan oturum sonlandırma yapılamaz.
+
+Her ikon aria-label ile etiketlenir:
+
+“Detayları Aç”
+
+“Süre Uzatma Menüsü”
+
+“Oturumu Bitir”
+
+
+Modal focus-trap ile açılır; ESC veya “İptal” ile kapanabilir.
+
+
+Kabul Kriterleri:
+
+[ ] Detay ikonu tıklandığında sağdan kayarak panel açılır.
+
+[ ] + ikonu baloncuk menüsünü açar/kapatır, animasyon ve glow çalışır.
+
+[ ] Bitir ikonu yalnız onay modalı ile çalışır; modal onayı olmadan oturum sonlandırılmaz.
+
+[ ] Ring ile ikonlar arasında min. 16 px boşluk her durumda korunur.
+
+[ ] Tüm ikonlar erişilebilirlik etiketlerine sahiptir.
+
+
+12) Progress Bar & Saatler
+
+Progress: clamp(leftMin/60 * 100%, 0%, 100%) formülü ile hesaplanır. Yani kalan dakika/60 oranı % cinsinden belirlenir, alt sınır 0, üst sınır 100 olarak sabitlenir. Progress bar ring altı yatay bir çizgi olarak gösterilir ve kalan sürenin oranını canlı günceller.
+
+Saatler:
+
+Başlangıç: Kart oluşturulurken sistem saati üzerinden alınır. Format: 24 saatlik, HH:MM (ör. 09:05).
+
+Bitiş: Uzatma anında anında güncellenir. Dakika toplama doğru yapılır, gün geçişinde mod 24 uygulanır (örn. 23:50 + 20 dk = 00:10).
+
+Format: Her zaman iki haneli saat ve dakika.
+
+
+Yerleşim: Alt satırda hizalanır. Sol tarafta Başlangıç: HH:MM, sağ tarafta Bitiş: HH:MM gösterilir. Orta kısım boş bırakılır, tipografi muted beyaz (13–14 px).
+
+Detaylar:
+
+Progress bar ve saatler shell state ile senkron çalışır, kart içi hesaplama yapılmaz.
+
+Her uzatma sonrası bitiş saati anında yenilenir.
+
+Paused durumda progress bar donar fakat saatler sabit görünümde kalır.
+
+
+Kabul Kriterleri:
+
+[ ] Progress bar clamp formülüyle çalışmalı, % değer hiçbir zaman negatif veya 100’ün üzerinde olmamalı.
+
+[ ] Başlangıç ve bitiş saatleri doğru formatta ve iki haneli olmalı.
+
+[ ] Bitiş zamanı her uzatma sonrası anında güncellenmeli.
+
+[ ] Saatler shell state’den alınmalı, kart içi hesaplama yapılmamalı.
+
+
+13) Toast Bildirimleri (Kart İçi)
+
+Yer: Kart sınırları içinde, sağ üste hizalıdır. Toast bildirimleri yalnızca ilgili kartın alanında görünür; global toast sistemi kullanılmaz.
+
+Stack: Birden fazla toast üst üste birikebilir; maksimum 3 toast önerilir. FIFO mantığıyla en eski toast otomatik kapanır.
+
+Türler:
+
+Uzatma: Amber arka plan + ✅ ikon. Metin: “+X dk eklendi”.
+
+Geri Alma: Mavi arka plan + ↶ ikon. Metin: “+X dk geri alındı”.
+
+Hata: Kırmızı arka plan + ⚠️ ikon. Metin: “İşlem başarısız”.
+
+Süre: Her toast 2–3 s sonra fade-out ile otomatik kapanır. Hata tostu kritik ise manuel kapatma gerektirir.
+
+Animasyon: Açılışta scale(.9→1) + fade-in; kapanışta scale(1→.9) + fade-out. Animasyon süresi 150–250 ms.
+
+Kapsam: Toast’lar yalnız ilgili kartta görünür, diğer kartlara yansımaz.
+
+Erişilebilirlik:
+
+aria-live="polite" özelliğiyle screen reader tarafından okunur.
+
+Konteyner, focus order dışında tutulur.
+
+Kabul Kriterleri:
+
+[ ] Her işlem (uzatma, geri alma, hata) uygun renkte toast üretir.
+
+[ ] Maksimum 3 toast aynı anda görünür, fazlası FIFO ile kapanır.
+
+[ ] Hata tostu kritik ise kendi kendine kapanmaz, manuel kapatılmalıdır.
+
+[ ] Tüm toast’lar aria-live etiketiyle erişilebilir olmalıdır.
+
+— EK: Görsel Revizyon & Okunabilirlik
+
+Yerleşim
+
+Toast kapsayıcı: bordersız, radius 10–12 px, iç boşluk 12–14 px, hafif gölge (shadow-md).
+
+Sol tarafta ikon-chip: 24 px SVG ikon, arka planı olay rengine %10 tonda (örn. amber için rgba(#f59e0b,0.1)), chip radius 9999 (pill).
+
+Metin solda ikonun sağında, satır içi tek satır (gerekirse … truncation); süre/dakika değeri bold.
+
+Renk & Tipografi
+
+Başlık/metin rengi: yüksek kontrastlı nötr (#111827 koyu temada uyarlanır).
+
+Olay renkleri token’dan:
+
+Uzatma: amber
+
+Geri alma: mavi
+
+Hata: kırmızı
+
+İç çizgi/border kullanılmaz (senin sevmediğin “çerçeve içinde” görünüm kalkar). Ayrım yalnız gölge ve chip ile verilir.
+
+Davranış
+
+Açılış: scale(0.96) + fade-in 180ms.
+
+Kapanış: fade-out 180ms.
+
+Metin şablonları:
+
+Uzatma: “+{X} dk eklendi”
+
+Undo: “+{X} dk geri alındı”
+
+Hata: “İşlem başarısız” (gerekirse ek açıklama)
+
+Stacking/FIFO ve süreler önceki madde ile aynen geçerli.
+
+Erişilebilirlik
+
+Kapsayıcı: aria-live="polite".
+
+İkon-chip dekoratif ise aria-hidden="true". Metin tam mesajı içerir (renk bağımsız anlaşılır).
+
+Kabul Kriterleri — Ek
+
+ Toast’larda border yok, hafif gölge + ikon-chip ile ayrışır.
+
+ Sol ikon inline SVG; renk ve metin olayla tutarlı.
+
+ Mesaj şablonları net: “+X dk eklendi / geri alındı / hata” ve bold dakika değeri.
+
+Küçük Notlar (uygulamaya yardım)
+
+İkon seti için tek bir <symbol> sprite kullanırsan hem performans hem tutarlılık sağlanır:
+
+Örn. #icon-extend, #icon-undo, #icon-pause, #icon-resume, #icon-finish, #icon-error.
+
+Renk token’larını CSS custom property olarak tanımla (zaten şartnamede var), chip arka planı için color-mix veya rgba kullan.
+
+Toast metninde border/çerçeve istemediğin için, “mod card” değil “mod toast” stili kullan; kart içindeki layout’tan bağımsız.
+
+bunları ekleyince:
+
+detay panel log görünümü “temiz, tek çizgi ikonlu” olacak,
+
+toast’lar bordersız, modern ve okunaklı olacak,
+
+aynı olayın simgesi/metni iki yerde de aynı görünecek (tutarlılık).
+
+14) Kid ID Yönetimi
+
+Başlangıç: “001”; her yeni kartta +1; kart kapansa bile resetlenmez (kalıcı sayaç).
+
+Kopyalama: ID tık → panoya; toast “Kopyalandı”.
+
+Hover: ince çerçeve görünür.
+
+Güvenlik & Tutarlılık Önlemleri:
+
+ID ataması atomic olmalı; aynı anda iki kart açıldığında çakışma olmaması için merkezi sayaç yönetimi uygulanır.
+
+Kopyalama işlemi yalnızca aktif kartlar için geçerlidir; expired kartlarda pasif yapılabilir.
+
+Panoya kopyalama işlemi kullanıcı eylemi ile tetiklenmeli (otomatik kopya yok, güvenlik için).
+
+ID her zaman sıfır dolgulu formatta (örn. 001, 002) olmalı, yanlış format kabul edilmez.
+
+Toast mesajı yalnızca ilgili kart içinde çıkar; global toast yoktur.
+
+Erişilebilirlik: ID’ye tıklanabilir alan minimum 40×40 px olmalı; aria-label="Kid ID kopyala" ile tanımlanmalı.
+
+
+15) Detay Paneli (Slide-in) – Güncel & Ultra Detay
+
+Açılış:
+Sağdan ~320 px genişlikte panel; kartın içinde overlay üstüne gelir.
+
+İçerik:
+Üstte çocuk adı + Kid ID tekrarı.
+
+Log Listesi Yapısı:
+Her kayıt 2 satırdan oluşur:
+
+1. Satır → Zaman damgası (HH:MM:SS).
+
+
+2. Satır → Olayın ikonlu metni.
+
+
+
+Satır aralığı: 6–8 px; kayıt blokları arasında 10–12 px boşluk.
+Maksimum 100 kayıt gösterilir; daha eski kayıtlar otomatik purge edilir.
+Scrollable alan; performans için sanallaştırma (virtualization) önerilir.
+
+Olay–İkon Eşlemesi:
+
+Uzatma (+X dk) → ⏱ ikon (amber #f59e0b), Tooltip: “+X dk uzatıldı”.
+
+Undo (geri alma) → ↶ ikon (mavi #3b82f6), Tooltip: “+X dk geri alındı”.
+
+Pause (duraklatma) → ⏸ ikon (gri–mavi #64748b), Tooltip: “Oturum duraklatıldı”.
+
+Resume (devam etme) → ▶ ikon (yeşil #16a34a), Tooltip: “Oturum devam etti”.
+
+Bitirme (oturum kapatma) → ✓ ikon (kırmızı #dc2626), Tooltip: “Oturum sona erdirildi”.
+
+Hata/Geçersiz giriş → ⚠️ ikon (kırmızı #dc2626), Tooltip: “Geçersiz işlem”.
+
+
+Yerleşim & Stil:
+Sol → ikon (24 px, sabit hizalı).
+Sağ → zaman damgası + metin.
+Metin stili: 14 px, normal ağırlık.
+Tüm ikon–renk eşlemesi sabit; her olayda aynı görsel kodlama kullanılır.
+
+Tutarlılık Kuralları:
+
+Toast & Log eşzamanlıdır: Her tetiklenen olay hem toast gösterir hem log’a kaydolur; içerikler bire bir eşleşir.
+
+İkon–Renk sabitliği: Olay tipleri arasında tutarlılık korunur (renk değiştirme yok).
+
+Tooltip zorunludur: Hover/focus durumunda tooltip açılır.
+
+ARIA: Her ikon aria-label ile tanımlıdır.
+
+
+Kapatma:
+X, Esc veya panel dışına tık.
+
+Erişilebilirlik:
+Focus trap, klavye ile gezinme.
+İkonlar aria-label ile erişilebilir.
+Tooltip içerikleri screen reader tarafından okunabilir.
+
+Güvenlik & Performans Önlemleri:
+
+Maks 100 kayıt sınırı korunur; purge işlemi atomic yapılır (yarım kalma riski yok).
+
+Scroll alanı sanallaştırılmış (virtualized) olmalı; yüksek log yoğunluğunda performans kaybı olmamalı.
+
+Tooltip içerikleri XSS’e karşı sanitize edilmeli.
+
+Kullanıcı paneli açıkken kritik işlem (merge/split/bitir) başlatılamaz; önce panel kapatılır.
+
+Panel state global shell ile senkron tutulur, çift açılma engellenir.
+
+
+Kabul Kriterleri (Checklist):
+[ ] Tüm olay tipleri için ikon + renk + tooltip tanımlı.
+[ ] Log satırları 2 satırlı yapı (üstte HH:MM:SS, altta ikon + metin).
+[ ] Maks 100 satır; scroll aktif.
+[ ] Toast ve log içerikleri bire bir aynı.
+[ ] Erişilebilirlik (aria-label, tooltip) eksiksiz.
+[ ] Performans kaybı yok; virtualization etkin.
+[ ] XSS güvenliği sağlanmış tooltip yapısı.
+
+Ek — Başlık Metni & Zaman Bloku (Sabit):
+Panel üst başlığında (çocuk adı + Kid ID) altına iki küçük satır eklenir (sabit konum):
+
+“Oturum açılışı: HH:MM” (startHHMM)
+
+“Geçen süre: HH:MM:SS” (canlı artar; paused iken durur, resume ile devam eder)
+
+
+Ek — Gecikme Bilgisi (Expired durumda):
+Panel başlığının zaman bloğuna, status=expired && finish yoksa küçük bir rozet/satır daha eklenir:
+
+“Gecikme: X dk” (per-minute güncellenir; uzatma satırı yoktur)
+
+
+Ek — Log Tutarlılığı:
+Expired olduğu an bir log girdisi düşülür:
+[HH:MM:SS] Oturum süresi doldu.
+Gecikmenin dakikalık artışı log’a akıtılmaz (gürültü önleme).
+
+Kabul Kriterleri – Ek:
+[ ] Başlık altında “Oturum açılışı” ve “Geçen süre” sabit görünür, değerler doğru güncellenir.
+[ ] Expired && unfinished → “Gecikme: X dk” panel başlığında görünür.
+[ ] Expire anında tek seferlik log kaydı oluşturulur.
+
+Ek – Başlık Altı Zaman Bloğu
+
+Amaç: Detay paneli açıldığında oturumun açılış saati, geçen süre ve varsa gecikmenin sabit bir blok halinde gösterilmesi.
+
+Konum:
+
+Panel üst başlığında “Çocuk Adı + Kid ID” satırının hemen altında sabit metin bloğu.
+
+Log listesi bu bloğun altından başlar.
+
+
+İçerik:
+
+“Oturum açılışı: HH:MM” → Oturumun başlama saati.
+
+“Geçen süre: MM:SS” → Canlı sayaç; pause durumunda donar, resume ile devam eder.
+
+“Gecikme: +X dk” → Eğer süre dolmuş ve kart kapatılmamışsa ek satır olarak görünür.
+
+
+Stil:
+
+Yazılar 14px, ikincil gri (#6b7280).
+
+Küçük ikon opsiyonel (⏱).
+
+Göz yormayan, başlık ile bütünleşik görünüm.
+
+
+Davranış:
+
+Panel her açıldığında sayaç resetlenmez; global shell saatine göre hesaplanır.
+
+expired durumda “Gecikme” satırı anında görünür.
+
+
+Erişilebilirlik:
+
+Zaman blokları sadece metin → SR (screen reader) doğal okur.
+
+“Geçen süre” satırı aria-live="polite" → dakikalık güncelleme duyurulur.
+
+
+Kabul Kriterleri:
+
+Panel açıldığında her zaman oturum açılış saati görünür.
+
+Geçen süre sayaç olarak akar; pause/resume senaryoları doğru işler.
+
+Expired durumda gecikme dakikası gösterilir.
+
+Performans: sayaç güncellemesi 1 sn interval ile; frame drop yok.
+
+Ek – Gesture ile Kapatma (Slide-to-close)
+
+Mobil/Tablet: Panel, sağa doğru yatay swipe ile kapanabilir.
+
+Masaüstü: Panel başlık bölgesi veya panel yüzeyinde sağa doğru mouse drag ile kapanabilir.
+
+Bu davranış, mevcut X butonu, ESC ve panel dışına tık seçeneklerine ek alternatif olarak çalışır (hepsi eşdeğer; çakışma yok).
+
+
+Eşikler & İptal Kuralları
+
+Mesafe eşiği: ≥ 80 px sağa sürüklemede kapanır.
+
+Hız alternatifi: Mesafe <80 px ise, vx ≥ 900 px/sn (hızlı sağa atış) kapanma için yeterlidir.
+
+Yön/doğrultu: Dikey hareket baskınsa (|dy| > |dx|) gesture iptal edilir (panel içi scroll’a öncelik).
+
+Başlangıç bölgesi: Mobilde ilk temas panel içi herhangi bir noktadan olabilir; kenar-jesti (edge-swipe) ile karışmaması için ilk 24 px’lik ekran kenarı dokunuşlarında sistem jestine öncelik verilir.
+
+Geri çağırma (cancel): Sürükleme <80 px ve hız eşiği yoksa panel eski konumuna ease-out (120–180 ms) döner.
+
+
+Çakışma Güvenliği
+
+Aşağıdaki durumlarda gesture devre dışı: + menüsü/Özel süre modalı açık, Bitir modalı açık, Merge/Drag aktif (bkz. 29), Split akışı (bkz. 31), Pause overlay açık (bkz. 20).
+
+Kritik sıralama (26) sırasında kullanıcı sürükleme jesti başlatmışsa freeze kuralları korunur; kapanma tamamlandıktan sonra sıralama yeniden devreye girer.
+
+Tooltip/hover içerikleri sürükleme boyunca bastırılır.
+
+
+Erişilebilirlik
+
+Kapanınca aria-live="polite" içinde “Detay paneli kapatıldı” duyurulur.
+
+Gesture, klavye kullanıcıları için zorunlu değildir; X ve ESC zaten mevcuttur.
+
+Odak yönetimi: Panel kapandıktan sonra odak tetikleyen elemente (ör. ℹ️ ikonuna) geri döner.
+
+
+Performans & Uygulama Notları
+
+Hareket sırasında yalnız transform/opacity güncellenir; reflow yok.
+
+requestAnimationFrame ile her karede bir güncelleme; düşük donanımda 16–24 ms throttle uygulanabilir.
+
+prefers-reduced-motion açıkken kapanma animasyonu daha kısa ve tek aşamalı yapılır (200 ms fade/slide).
+
+
+Kabul Kriterleri – Ek
+[ ] Mobilde sağa swipe ≥80 px veya hızlı sağa atış (≥900 px/sn) ile panel kapanır.
+[ ] Masaüstünde sağa drag ile aynı eşik/hız kuralları geçerlidir.
+[ ] X, ESC ve dış tık seçenekleriyle çakışmaz, hepsi alternatif yollar olarak çalışır.
+[ ] + menü, modal, merge/drag, pause overlay açıkken gesture tetiklenmez.
+[ ] Kapanışta SR’a “Detay paneli kapatıldı” duyurulur; odak tetikleyene döner.
+[ ] Animasyonlar transform/opacity ile akıcı, reflow yok.
+
+EK: İkon Seti & Görsel Tutarlılık
+
+İkon Kaynağı & Stil
+
+Emoji kullanılmaz; tüm olay ikonları inline SVG olarak render edilir (tek sprite ya da component set).
+
+Boyut: 24 px (liste ikonları), stroke: 1.75 px, linecap/linejoin: round.
+
+Renkler, şartnamedeki token’lardan alınır:
+
+extend: amber #f59e0b
+
+undo: mavi #3b82f6
+
+pause: slate #64748b
+
+resume: yeşil #16a34a
+
+finish/error: kırmızı #dc2626
+
+İkon ile metin arası boşluk: 8 px. Satır içi hizalama: middle.
+
+İkon–Metin Eşleşmesi (Toast ile bire bir)
+
+Detay panelindeki her log satırında görünen ikon ve renk, aynı olayın toast’ındaki ikon/renk ile bire bir aynı olmalıdır (tek kaynaklı doğruluk).
+
+Tooltip başlığı ve aria-label metni toast mesajıyla aynı string’den türetilir.
+
+Erişilebilirlik
+
+Her SVG’ye role="img" ve aria-label="Uzatma" | "Geri alma" | ... eklenir.
+
+Tooltip title attribute’u ile, SR metni aria-label ile sağlanır (ikisi aynı içeriği taşır).
+
+Yedek (Fallback)
+
+SVG yüklenemezse tek renkli placeholder SVG (kare/daire iç çizgi) gösterilir; emoji fallback yok.
+
+Kabul Kriterleri — Ek
+
+ Detay panelinde hiçbir olayda emoji görünmez; tüm ikonlar inline SVG’dir.
+
+ İkon boyutu ve stroke tüm satırlarda tutarlıdır (24px / 1.75px).
+
+ Renk eşlemesi toast ile bire bir aynıdır; tooltip/aria içerikleri senkrondur.EK: İkon Seti & Görsel Tutarlılık
+
+İkon Kaynağı & Stil
+
+Emoji kullanılmaz; tüm olay ikonları inline SVG olarak render edilir (tek sprite ya da component set).
+
+Boyut: 24 px (liste ikonları), stroke: 1.75 px, linecap/linejoin: round.
+
+Renkler, şartnamedeki token’lardan alınır:
+
+extend: amber #f59e0b
+
+undo: mavi #3b82f6
+
+pause: slate #64748b
+
+resume: yeşil #16a34a
+
+finish/error: kırmızı #dc2626
+
+İkon ile metin arası boşluk: 8 px. Satır içi hizalama: middle.
+
+İkon–Metin Eşleşmesi (Toast ile bire bir)
+
+Detay panelindeki her log satırında görünen ikon ve renk, aynı olayın toast’ındaki ikon/renk ile bire bir aynı olmalıdır (tek kaynaklı doğruluk).
+
+Tooltip başlığı ve aria-label metni toast mesajıyla aynı string’den türetilir.
+
+Erişilebilirlik
+
+Her SVG’ye role="img" ve aria-label="Uzatma" | "Geri alma" | ... eklenir.
+
+Tooltip title attribute’u ile, SR metni aria-label ile sağlanır (ikisi aynı içeriği taşır).
+
+Yedek (Fallback)
+
+SVG yüklenemezse tek renkli placeholder SVG (kare/daire iç çizgi) gösterilir; emoji fallback yok.
+
+Kabul Kriterleri — Ek
+
+ Detay panelinde hiçbir olayda emoji görünmez; tüm ikonlar inline SVG’dir.
+
+ İkon boyutu ve stroke tüm satırlarda tutarlıdır (24px / 1.75px).
+
+ Renk eşlemesi toast ile bire bir aynıdır; tooltip/aria içerikleri senkrondur.
+
+
+
+16) Bitir Akışı (Modal)
+
+Tetik:
+Sağdaki ✓ ikon.
+
+Modal:
+Ortada büyük ✓ (dolgun), cam efekt + gölge, şık tasarım.
+
+Başlık:
+“Oturumu Bitir”.
+
+Metin:
+“Bu oyun seansını sonlandırmak istediğinizden emin misiniz?”
+
+Butonlar:
+
+“İptal” (nötr)
+
+“Evet, Bitir” (vurgu rengi)
+
+
+Davranış:
+
+İptal → modal kapanır.
+
+Evet → card:finish event tetiklenir; üst uygulama tahsil/kapama akışına geçer; kart ekranda fade-out + shrink ile şıkça kapanır.
+
+
+Güvenlik & Tutarlılık Önlemleri:
+
+Modal açıldığında arka plan disable edilir (tıklanamaz hale gelir).
+
+İşlem atomic yapılır; aynı anda iki “bitir” çağrısı tetiklenemez.
+
+“Evet, Bitir” butonu çift tıklamaya karşı korumalıdır (debounce).
+
+Erişilebilirlik için modal açıldığında odak “İptal” butonuna gelir; Esc ile kapatma desteklenir.
+
+ARIA: aria-labelledby ve aria-describedby tanımlıdır.
+
+Onay verilmeden kartın state’i değişmez; kullanıcı eylemi zorunludur.
+
+
+Kabul Kriterleri (Checklist):
+[ ] ✓ ikonu doğru tetikleyici olarak çalışır.
+[ ] Modal cam efekt + gölge ile estetik görünür.
+[ ] “İptal” → yalnız modal kapanır, state değişmez.
+[ ] “Evet, Bitir” → card:finish tetiklenir, kart fade-out + shrink ile kapanır.
+[ ] Çift tıklama veya race condition engellenmiştir.
+[ ] Erişilebilirlik (Esc, focus trap, ARIA) eksiksizdir.
+
+
+17) Veri Akışı, State Şeması & Event’ler
+
+Sayaç:
+
+paused === false && leftMin > 0 iken 1 s tick ile leftMin azaltılır.
+
+UI’da sayı Math.round ile gösterilir; 0 altı clamp edilir (negatif görünmez).
+
+Eşik değişiminde sınıf/renk anında güncellenir (ok/warn/danger/paused/expired).
+
+Zaman tabanı ve sayaç senkronu shell state tarafından belirlenir; kart kendi başına zaman üretmez (drift engellenir).
+
+
+State Tipi:
+
+type CardState = {
+   id: string|number,
+   kidSeq: number, // ekranda "001"
+   child: string,
+   parent: string,
+   gender: 'm'|'f',
+   startHHMM: string,
+   endHHMM: string,
+   leftMin: number,
+   paused: boolean,
+   lastExtend?: { amount:number, at:number },
+   undo: Array<{ idx:number, delta:number }>, // max 2 (not: undo politikası 30 sn ve tek kullanımlık)
+   log: Array<{ t:number, txt:string }>,
+   status: 'active'|'expired'
+ }
+
+Event’ler (CustomEvent):
+
+card:extend { id, addMin, newLeft, newEnd }
+
+card:undo { id, delta, newLeft, newEnd }
+
+card:pause / card:resume { id }
+
+card:finish { id }
+
+card:openDetails / card:closeDetails { id }
+
+card:copyKidId { id, kidSeq }
+
+
+Davranış Notları:
+
+State güncellemeleri atomic uygulanır (tek karede tutarlı görünüm).
+
+Her event hem toast hem de log kaydı ile eşzamanlıdır; metinler bire bir eşleşir.
+
+endHHMM uzatma/undo anında hemen güncellenir (24h sarımı mod 24).
+
+status alanı leftMin <= 0 olduğunda expired’a geçer; ring/progress 0 olur.
+
+
+Kabul Kriterleri:
+
+[ ] leftMin 1 s tick ile azalır; 0’ın altına düşmez (clamp).
+
+[ ] Eşik değişiminde görsel sınıf/renk anında güncellenir.
+
+[ ] Uzatma/undo sonrası newLeft ve newEnd doğru hesaplanır ve yayınlanır.
+
+[ ] Tüm event’ler doğru payload alanları ile tetiklenir.
+
+[ ] UI ve shell state senkron; çifte hesap (drift) görülmez.
+
+Ek – Gecikme hesaplaması (view-model):
+delayMin state’e yazılmaz; endAt/endHHMM ve shell saatine göre türetilir.
+
+View-model: delayMin = max(0, floor((now - endAt)/60))
+
+Per-minute tick ile UI yenilenir; toast/log tetiklemez.
+
+Ek – Geçen Süre & Gecikme Hesaplama
+
+Amaç: Geçen süre ve gecikme bilgisinin veri modelinde değil, UI tarafında hesaplanması.
+
+Konum:
+
+CardState içine kalıcı alan eklenmez.
+
+UI, shell global saati üzerinden hesap yapar.
+
+
+Kurallar:
+
+elapsedSec (geçen süre) → Detay Paneli başlık altındaki blokta (bkz. 15).
+
+delayMin (gecikme süresi) → Sağ üst durum alanında (bkz. 21).
+
+
+Davranış:
+
+Hesaplama client tarafında; backend snapshot’tan yalnız start/end zamanları gelir.
+
+Oturum kapanınca sayaç durur.
+
+
+Erişilebilirlik:
+
+Backend değişmez; SR uyumu bozulmaz.
+
+
+Kabul Kriterleri:
+
+Her kart için elapsedSec doğru işler (drift <1 sn).
+
+Gecikme yalnız expired + open durumda hesaplanır.
+
+State modelinde ek alan olmamasına rağmen UI göstergeleri eksiksiz görün
+
+
+18) Kenar Senaryoları & Kurallar
+
+Süre Dolumu:
+
+leftMin ≤ 0 olduğunda status = expired olur.
+
+Ring = 0, progress = 0; yalnızca “Süre Doldu” rozeti görünür.
+
+Bu durumda kartta başka aksiyon (uzatma/bitir vs.) çalışmaz, yalnız log kaydı tamamlanır.
+
+
+Menü Davranışı:
+
+menüsü açıkken kart dışına veya ring/boş alana tıklanınca menü kapanır.
+
+
+Aynı anda ikinci bir + menüsü açılamaz (otomatik olarak diğerini kapatır).
+
+
+Özel Balon Girişi:
+
+Girilen değer ≥ 1 dk olmalıdır.
+
+Üst sınır opsiyoneldir (öneri: 180 dk).
+
+Geçersiz (0 veya negatif) girişte toast “Geçersiz süre” hatası gösterilir, log’a kaydolur.
+
+
+Temas Kuralları (Zorunlu):
+
++, ℹ️, ✓ ikonları ring dış çembere asla temas etmez; ≥16 px boşluk zorunludur.
+
+Baloncuklar ring dış çembere asla temas etmez; ≥44 px GAP + ≥16 px görsel boşluk her zaman korunur.
+
+Bu kurallar responsive ölçekte de geçerlidir.
+
+
+Toast Kuralları:
+
+Tüm toast’lar kart içinde gösterilir; global toast kullanılmaz.
+
+Aynı anda en fazla 3 toast stack olabilir; 2–3 saniyede fade-out kapanır.
+
+Hata/uyarı durumlarında kart sınırları dışına taşma engellenir.
+
+Event İzolasyonu (Cross-Browser)
+
+Baloncuk click handler’ı daima event.stopPropagation() ve event.preventDefault() ile üst katmanlardan izole edilmelidir.
+
+Parent (ring, overlay, kart) click handler’ları ile çakışma olmaması garanti edilir.
+
+Cross-browser test: Chrome, Samsung Internet, Safari, Firefox’ta kontrol edilir.
+
+Kabul kriteri:
+
+Baloncuk tıklanınca yalnız süre uzatma modalı açılır.
+
+Aynı click hiçbir zaman pause/resume tetiklemez.
+
+Baloncuk animasyonu kendi çevresinde olur, merkeze doğru “basıyor” gibi görünmez.
+
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] leftMin ≤ 0 → expired, yalnız “Süre Doldu” rozeti görünür.
+
+[ ] Menü dış tıklamada otomatik kapanır; aynı anda tek + menü açıktır.
+
+[ ] Özel balon değeri ≥1 dk; geçersiz değer toast + log ile reddedilir.
+
+[ ] +, ℹ️, ✓ ikonları ring dış çembere temas etmez; ≥16 px boşluk korunur.
+
+[ ] Baloncuklar ring’e asla temas etmez; GAP ≥44 px + ≥16 px boşluk korunur.
+
+[ ] Toast’lar yalnız kart içinde; stack ve otomatik kapanma davranışı geçerlidir.
+
+Ek – Expired görünüm istisnası:
+Mevcut kural “yalnız ‘Süre Doldu’ rozeti görünür” ifadesi, durum alanı hiyerarşisinde “Süre Doldu”nun üst satır olduğunu belirtir. Bu ek ile, status=expired && finish yoksa alt satır olarak “X dk gecikme” gösterilmesi izinlidir. (Uzatma satırı bu durumda gösterilmez.)
+
+
+19) Erişilebilirlik & Kabul
+
+A11y (Accessibility):
+
+Tüm butonlar Tab / Enter / Space ile erişilebilir.
+
+Her butonun aria-label ve aria-pressed (uygunsa) attribute’u bulunur.
+
+Toast alanı aria-live="polite" olarak tanımlıdır (screen reader uyumlu).
+
+Açık panel / menü / modal Esc ile kapanır.
+
+Tüm etkileşim alanları (hit target) ≥40×40 px boyutunda olmalıdır.
+
+
+Performans:
+
+Canvas çizimleri minimal repaint prensibiyle yapılır.
+
+Animasyonlarda yalnızca transform ve opacity kullanılır; reflow engellenir.
+
+Sayaç güncellemesi throttle edilir; gereksiz reflow olmaz.
+
+Log ve toast güncellemeleri sanallaştırma (virtualization) ile optimize edilir.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Ring merkez referanslıdır; + menüsü 360° eşit dağılımla yerleşir.
+
+[ ] Baloncuklar ve ikonlar ring’e temas etmez; ≥16 px güvenlik boşluğu korunur.
+
+[ ] Pause hover’da görünür; click → “|| Duraklatıldı” overlay; resume doğru çalışır.
+
+[ ] İşlem şeridi 3 simetrik ikondan oluşur; davranışları doğru işler.
+
+[ ] Sağ üst rozet: Devam Ediyor / +X dk uzatma / Süre Doldu kuralına uyar.
+
+[ ] Kid ID artar, kopyalanabilir; “Kopyalandı” toast tetiklenir.
+
+[ ] Uzatma işlemi onaylıdır; bitiş saati anında güncellenir; undo maks 2 hakkıyla sınırlıdır.
+
+[ ] Eşik renkleri, gradient ve blink efektleri doğru şekilde uygulanır.
+
+[ ] Detay paneli slide-in açılır, loglar anlık ve ikonlu olarak dolar.
+
+[ ] Bitir modalı şık, erişilebilir; card:finish olayı doğru tetiklenir.
+
+[ ] Tüm toast’lar kart içinde gösterilir; stack ve otomatik kapanma davranışı çalışır.
+
+[ ] Canlı sayaç, event’ler ve state akışı hatasızdır; drift oluşmaz.
+
+
+20) Pause / Resume Özel Durumları
+
+Overlay:
+
+Üzerinde hem görsel ikon (“||” = duraklat, “▶” = devam) hem de açıklama metni bulunur.
+
+Görsel ikon ile metin aynı anda gösterilir; stil olarak kontrast yüksek olmalıdır.
+
+Overlay açıldığında kart içeriği blur + dim efekt alır.
+
+
+Erişilebilirlik:
+
+Screen reader için:
+
+Duraklatıldığında aria-label="Duraklatıldı"
+
+Devam ederken aria-label="Devam et"
+
+
+Focus trap uygulanır; overlay açıkken Tab ile başka elemente gidilemez.
+
+Klavye ile Space/Enter → Resume, Esc → Overlay kapatılır.
+
+
+Davranış:
+
+Resume sonrası süre hesaplaması gecikmesiz devam eder; zaman kayması olmaz.
+
+Sayaç paused → resume geçişinde doğru şekilde kaldığı yerden ilerler.
+
+Event tetikleme:
+
+Pause → card:pause {id}
+
+Resume → card:resume {id}
+
+
+
+Mobil Etkileşim:
+
+Overlay açıkken ikinci dokunuş resume işlemini tetikler.
+
+Pointer-capture çatışmaları engellenir; çift tıklama/yanlış swipe gibi hatalar önlenir.
+
+Tek parmakla kontrol garanti edilir; multi-touch devre dışıdır.
+
+
+Güvenlik & Tutarlılık Önlemleri:
+
+Pause ve Resume event’leri atomic’tir; aynı anda ikisi tetiklenemez.
+
+Çift tıklama debounce ile engellenir.
+
+Overlay state global shell ile senkron tutulur (çift overlay açılmaz).
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Overlay hem ikon hem metin gösterir; kontrast yüksek.
+
+[ ] Duraklatıldığında aria-label="Duraklatıldı", devamda aria-label="Devam et".
+
+[ ] Resume sonrası sayaç gecikmesiz kaldığı yerden çalışır.
+
+[ ] Mobilde ikinci dokunuş Resume tetikler; pointer-capture sorunsuz.
+
+[ ] Pause/Resume event’leri doğru payload ile tetiklenir.
+
+[ ] Çift tıklama veya overlay çakışması engellenmiştir.
+
+
+
+21) Uzatma Bilgileri & Durum Alanı
+
+Yerleşim:
+
+Kartın sağ üstünde, hiyerarşik 3 satır mantığı ile çalışır.
+
+Durum alanı her zaman aynı konumda sabitlenmiştir; responsive’de de kaymaz.
+
+
+Satır Yapısı:
+
+1. Devam Ediyor – yeşil daire ikonu ile gösterilir.
+
+
+2. +X dk uzatma – amber (#f59e0b) daire ikonu; yalnızca uzatma yapılmışsa görünür.
+
+
+3. Süre Doldu – kırmızı (#dc2626) daire ikonu; aktif olduğunda diğer satırlar otomatik gizlenir.
+
+
+
+Davranış Kuralları:
+
+Birden fazla uzatma yapılırsa yalnız sonuncusu görünür.
+
+Önceki tüm uzatmalar Detay Paneli logunda kaydedilir.
+
+Undo yapılırsa uzatma satırı durum alanından otomatik kaldırılır.
+
+“Süre Doldu” durumu tetiklendiğinde diğer tüm satırlar gizlenir; yalnız bu satır görünür.
+
+Durum alanındaki satırlar toast ve log event’leri ile senkron tutulur.
+
+
+Stil:
+
+İkonlar dairesel, 16–20 px, sabit hizada.
+
+Metin stili: 14 px, normal ağırlık.
+
+Yeşil/amber/kırmızı renkler WCAG kontrastını sağlayacak şekilde uygulanır.
+
+
+Erişilebilirlik:
+
+Her satır aria-label ile tanımlıdır (örn. “Devam Ediyor”, “+10 dakika uzatma”, “Süre Doldu”).
+
+Durum değişimi aria-live="polite" alanına duyurulur; screen reader kullanıcıları güncellemeyi anlık alır.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Sağ üst alan 3 satırlı mantıkla çalışır.
+
+[ ] Birden fazla uzatma → yalnız sonuncusu görünür; öncekiler log’da.
+
+[ ] Undo → uzatma satırı durum alanından kaldırılır.
+
+[ ] “Süre Doldu” aktifken diğer satırlar gizlenir.
+
+[ ] Satırlar toast ve log event’leri ile senkronize.
+
+[ ] Renkler ve kontrastlar WCAG uyumlu.
+
+[ ] aria-label ve aria-live erişilebilirlik desteği eksiksiz.
+
+Ek-Gecikme Satırı (Expired durumda):
+status=expired ve kart kapatılmamışsa (finish yoksa), sağ üst durum alanında “Süre Doldu” satırının altında ikinci satır olarak “X dk gecikme” gösterilir.
+
+Hesap: delayMin = floor((now - endAt)/60); delayMin ≥ 1 ise görünür.
+
+Güncelleme: Her tam dakikada bir artar (per-minute tick), saniye bazında akmaz.
+
+Öncelik: Gecikme satırı, uzatma satırının yerine görünür (expired iken “+X dk uzatma” satırı gösterilmez).
+
+ARIA: aria-label="Süre doldu, {delayMin} dakika gecikme".
+
+
+Kabul Kriterleri – Ek:
+[ ] status=expired && finish yok → “Süre Doldu” + “X dk gecikme” birlikte görünür.
+[ ] Expired iken “+X dk uzatma” satırı görünmez.
+[ ] delayMin dakika başı doğru artar; 0 olduğunda gizlenir.
+
+Ek – Uzatma vs. Gecikme Gösterimi
+
+Amaç: Sağ üst durum alanında uzatma veya gecikme bilgilerinin koşullu gösterimi.
+
+Konum:
+
+“Durum” satırının altında.
+
+Normalde: “+X dk uzatma”.
+
+Expired durumda: “Gecikme: +Y dk” (turuncu/kırmızı ton).
+
+
+Davranış:
+
+Kart expired → uzatma satırı gizlenir, gecikme satırı gösterilir.
+
+Yeni uzatma yapılırsa gecikme satırı kaybolur, uzatma bilgisi tekrar görünür.
+
+
+Erişilebilirlik:
+
+SR için “15 dakika gecikme” net okunur.
+
+Renk yalnızca yardımcı sinyal; metin açık yazar.
+
+
+22) Detay Paneli & Toast Tutarlılığı
+
+Tutarlılık Kuralı:
+
+Detay Paneli’nde görünen loglar ile toast mesajları bire bir eşleşir.
+
+Toast tetiklendiği anda eş zamanlı olarak log’a kalıcı kayıt düşer.
+
+Bu yapı tek kaynaklı doğruluk (single source of truth) prensibine dayanır.
+
+
+Davranış:
+
+Her tetiklenen event → aynı içerik:
+
+Toast = anlık bildirim (kart içi, geçici).
+
+Log = kalıcı kayıt (panel içi, sürekli).
+
+
+İçerikler metin, ikon ve renk açısından tamamen aynı olmalıdır.
+
+Toast süresi bittiğinde kaybolsa bile log kaydı kalıcıdır.
+
+
+Senaryo Örnekleri:
+
+Uzatma yapıldığında: “+10 dk uzatıldı” → Toast çıkar, aynı içerik log’a eklenir.
+
+Undo yapıldığında: “10 dk geri alındı” → Toast + log aynı içerikte görünür.
+
+Hata olduğunda: “Geçersiz işlem” → Toast kırmızı ⚠️, aynı metin log’a kaydedilir.
+
+
+Teknik Önlemler:
+
+Toast mesajı ve log girdisi aynı event payload üzerinden üretilir (ayrı kopya yok).
+
+JSON schema ile doğrulama yapılır; içerik farklılığı oluşursa hata fırlatılır.
+
+Toast metinleri XSS’e karşı sanitize edilir; log tarafında da aynı sanitize uygulanır.
+
+
+Erişilebilirlik:
+
+Toast mesajları aria-live="polite" alanında duyurulur.
+
+Log panelindeki kayıtlar screen reader tarafından erişilebilir.
+
+Tooltip açıklamaları toast ile log arasında aynı içeriği taşır.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Tüm toast mesajları log’larla bire bir eşleşir (metin, ikon, renk).
+
+[ ] Toast tetiklendiği anda log kaydı anlık eklenir.
+
+[ ] Tek kaynaklı doğruluk prensibi korunur; farklı içerik üretilemez.
+
+[ ] Toast geçici, log kalıcıdır; tutarlılık bozulmaz.
+
+[ ] XSS güvenliği hem toast hem log tarafında sağlanır.
+
+[ ] Erişilebilirlik (aria-live, screen reader) eksiksizdir.
+
+
+
+
+23) Özel Süre Baloncuğu & Çoklu Uzatma Davranışı
+
+Özel Baloncuk Girişi:
+
+Tıklanınca küçük modal / input alanı açılır.
+
+Input yalnızca sayısal (dakika) değer kabul eder.
+
+Minimum = 1 dk, Maksimum = 180 dk (üst sınır opsiyonel ama önerilen değer).
+
+Geçersiz giriş (0, negatif, boş, harf vb.) durumunda:
+
+Input kırmızı çerçeveye geçer.
+
+⚠️ toast gösterilir: “Geçerli bir süre giriniz.”
+
+Log’a hata kaydı düşer.
+
+
+Onay sonrası:
+
+Süre mevcut karta eklenir.
+
+Çıkış saati anında güncellenir.
+
+Hem log hem de toast kaydı düşer.
+
+
+
+Çoklu Uzatma Davranışı:
+
+Birden fazla uzatma yapılırsa sağ üst durum alanında yalnızca son yapılan uzatma görünür.
+
+Önceki uzatmalar kaybolmaz; Detay Paneli log satırları olarak listelenir.
+
+Undo yapılırsa yalnızca son uzatma geri alınır; önceki kayıtlar değişmez.
+
+Undo sonrası durum alanındaki uzatma satırı otomatik kaldırılır.
+
+
+Teknik & Güvenlik Önlemleri:
+
+Input alanı yalnızca type="number" + min=1 + max=180 kısıtlamaları ile render edilir.
+
+XSS ve HTML injection önlenmesi için sanitize edilir.
+
+“Enter” → Onay, “Esc” → İptal davranışı tanımlıdır.
+
+Aynı anda birden fazla özel balon açılmaz (singleton modal).
+
+Event tetiklemeleri atomic yapılır:
+
+Onay → card:extend {id, addMin, newLeft, newEnd}
+
+Undo → card:undo {id, delta, newLeft, newEnd}
+
+
+
+Erişilebilirlik:
+
+Input alanı aria-label="Özel süre girişi" ile tanımlıdır.
+
+Hata mesajı aria-live="assertive" olarak duyurulur.
+
+Toast mesajı screen reader tarafından okunabilir.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Özel baloncuk input yalnızca sayısal dakika alır (1–180).
+
+[ ] Geçersiz girişte kırmızı uyarı + ⚠️ toast tetiklenir.
+
+[ ] Onay sonrası süre eklenir, çıkış saati güncellenir, log+toast eklenir.
+
+[ ] Çoklu uzatmada yalnız sonuncusu durum alanında görünür.
+
+[ ] Önceki uzatmalar log’da listelenir.
+
+[ ] Undo yalnız son uzatmayı geri alır; durum alanı güncellenir.
+
+[ ] Input alanı sanitize + erişilebilirlik kriterlerine uygundur.
+
+
+
+
+24) Bitir Akışı Sonrası Yönlendirme & Toast Yığılma Kuralları
+
+Bitir Akışı:
+
+Bitir Modalı → “Evet, Bitir” seçildiğinde card:finish olayı tetiklenir.
+
+Kart fade-out + shrink animasyonu ile kapanır.
+
+Varsayılan davranış: Kapanış sonrası otomatik olarak Oyunlar listesi ekranına dönüş yapılır.
+
+Eğer ödeme/tahsil ekranı entegrasyonu varsa:
+
+1. “Bitir” sonrası önce Ödeme ekranı açılır.
+
+
+2. Ödeme tamamlandığında otomatik olarak Oyunlar listesine dönüş gerçekleşir.
+
+
+
+Oyunlar listesi dönüşünde yeni state, kapatılan kartın yokluğu ile güncellenir.
+
+
+Toast Yığılma (Stacking) Kuralları:
+
+Aynı anda ekranda en fazla 3 toast görünür.
+
+4. toast geldiğinde en eski toast otomatik kapanır (FIFO – first in, first out mantığı).
+
+
+
+Her toast bağımsız fade-in/fade-out animasyonu ile açılır/kapanır.
+
+Toast’lar kart sınırları içindedir; global toast kullanılmaz.
+
+Kritik hata toasları (ör. “Geçersiz işlem”) her zaman önceliklidir; FIFO sırasına bakmaksızın öne çıkar.
+
+
+Teknik & Güvenlik Önlemleri:
+
+card:finish event atomic çalışır; aynı anda iki kez tetiklenemez.
+
+Toast queue yapısı bellek sızıntısına karşı otomatik temizlenir.
+
+Ödeme ekranı → oyun listesi dönüş akışında network hatası oluşursa kullanıcıya retry opsiyonu gösterilir.
+
+Erişilebilirlik için tüm toast mesajları aria-live="polite" alanında okunur.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] “Evet, Bitir” → card:finish tetikler, kart animasyonla kapanır.
+
+[ ] Varsayılan dönüş Oyunlar listesine yönlendirir.
+
+[ ] Ödeme entegrasyonu varsa akış: Bitir → Ödeme → Oyunlar listesi.
+
+[ ] Aynı anda en fazla 3 toast görünür; 4. toast → en eski kapanır (FIFO).
+
+[ ] Kritik hatalar öncelikli olarak öne çıkar.
+
+[ ] Toast’lar fade-in/fade-out animasyonlu, kart içi konumlandırılmıştır.
+
+[ ] Erişilebilirlik (aria-live) eksiksizdir.
+
+
+
+25) Undo Davranışı ve Kısıtlar
+
+Temel Kural:
+
+Undo işlemi yalnızca son yapılan uzatma için geçerlidir.
+
+Önceki uzatmalar kalıcıdır; yalnızca log kaydı içinde görünür.
+
+
+Kısıtlar:
+
+Zaman Kısıtı: Undo, ilgili uzatmadan sonra maksimum 30 saniye boyunca kullanılabilir. Süre dolduğunda geri alma hakkı kaybolur.
+
+Sayı Kısıtı: Her kart için Undo yalnızca 1 kez uygulanabilir (yalnız son uzatma için).
+
+Yetki Kısıtı: Geçmişte yapılan uzatmalar veya süresi dolmuş undo işlemleri yalnızca yönetici rolünde iptal edilebilir; personel bu işlemi yapamaz.
+
+
+Onay Mekanizması:
+
+Undo’ya basıldığında mini bir onay modalı açılır:
+
+Metin: “Son uzatma geri alınsın mı?”
+
+Butonlar: “Evet, Geri Al” (vurgu) / “İptal” (nötr).
+
+
+İptal → modal kapanır, state değişmez.
+
+Onay → card:undo {id, delta, newLeft, newEnd} event tetiklenir.
+
+
+Log & Toast:
+
+Geri alma işlemi hem Detay Paneli loguna kaydedilir, hem de toast mesajı çıkar.
+
+Toast: “+X dk geri alındı” (mavi ↶ ikon).
+
+Log: aynı içerik, zaman damgası ile listelenir.
+
+
+Güvenlik & Tutarlılık Önlemleri:
+
+Undo yalnızca atomic çalışır; çift tıklama / tekrar tetikleme engellenir.
+
+Geri alma sonrası kart state’i ve endHHMM anında güncellenir.
+
+Undo kuralı shell state ile senkronize tutulur; aynı undo farklı cihazlarda iki kez çalıştırılamaz.
+
+Yönetici override işlemleri log’da “Admin Undo” olarak ayrı kayıtlanır.
+
+
+Kabul Kriterleri (Checklist):
+
+[ ] Undo yalnız son uzatma için çalışır; önceki uzatmalar kalıcıdır.
+
+[ ] Undo zaman kısıtı = 30 saniye.
+
+[ ] Undo kart başına yalnızca 1 kez yapılabilir.
+
+[ ] Undo’ya basıldığında onay modalı açılır; yalnız onay sonrası işlem uygulanır.
+
+[ ] Geri alma işlemi toast + log ile bire bir eşleşir.
+
+[ ] Süresi dolmuş undo işlemleri yalnız yönetici rolünde iptal edilebilir.
+
+[ ] Event payload: card:undo {id, delta, newLeft, newEnd} doğru şekilde tetiklenir.
+
+[ ] Undo işlemleri atomic çalışır; race condition engellenir.
+
+
+
+26) Kritik Süre Önceliği & Görsel Vurgu
+
+Amaç:
+Kalan süre kritik seviyeye indiğinde (≤5 dk) kartların kullanıcıya daha görünür olması ve operasyonda önceliklendirilmesi.
+
+
+---
+
+26.1 Tetikleyici Eşikleri
+
+Kritik: leftMin ≤ 5 → priority="critical".
+
+Süper Kritik: leftMin ≤ 2 → priority="super_critical" (kritikten bir seviye yukarı, daha güçlü vurgu).
+
+leftMin ≤ 0 durumunda zaten expired akışı devrededir; kritik vurgular kapanır.
+
+
+
+---
+
+26.2 Sıralama (Priority Sorting)
+
+Grid, kritik ve süper kritik kartları üst sıralara taşır.
+
+Sıralama anahtarları:
+
+1. Birincil: leftMin artan (en az kalan en üstte).
+
+
+2. İkincil: endHHMM artan.
+
+
+3. Üçüncül: createdAt veya id artan.
+
+
+
+Stabil sıralama: Eşit değerlerde mevcut göreli düzen korunur.
+
+Debounce/Throttle: Yeniden sıralama en fazla 1/sn yapılır, ~800 ms debounce uygulanır.
+
+Etkileşim sırasında sıralama yapılmaz → menü açık, detay paneli açık, Bitir (✓) modalı açık, hover/focus aktif, Kid ID kopyalama baloncuğu açık veya özel süre girişi modalı aktif iken sıralama queue’ya alınır, etkileşim bitince uygulanır.
+
+
+
+---
+
+26.3 Görsel Vurgular (Blink/Glow)
+
+Ring nefes/parıltı animasyonuna ek olarak kart çerçevesi:
+
+Kritik (≤5 dk): Yumuşak kırmızı outer glow (#ef4444 %38 opak), 1.4 s periyotlu nefes animasyonu.
+
+Süper Kritik (≤2 dk): Glow şiddeti %10 artırılır, periyot 1.2 s.
+
+
+WCAG Güvenliği: Yanıp sönme frekansı ≤3 Hz.
+
+prefers-reduced-motion: reduce aktifse tüm animasyonlar statik kırmızı vurguya dönüşür.
+
+
+
+---
+
+26.4 Durum Rozetleri ile Uyum
+
+Sağ üst durum alanı hiyerarşisi:
+
+“Devam Ediyor” (yeşil).
+
+“+X dk uzatma” (amber; varsa Devam Ediyor’un altında).
+
+“Süre Doldu” (kırmızı; görünürse diğer satırlar gizlenir).
+
+
+Opsiyonel etiket: Kritik → “Kritik”, Süper kritik → “Acil” rozeti. Metin hizasını bozmaz.
+
+
+
+---
+
+26.5 Otomatik Kaydırma (Auto-Scroll)
+
+Kart kritik olup üst sıraya taşındığında:
+
+Kullanıcı kartı hover/focus ediyorsa auto-scroll yapılmaz.
+
+Kullanıcı etkileşimde değilse ve kart görünüm dışındaysa liste ≈400 ms animasyonla kritik grubun başlangıcına kayar.
+
+
+Kaydırma asla modalları/panelleri bozmaz; sadece görsel odak sağlar.
+
+
+
+---
+
+26.6 Pause/Expired ile Çakışma
+
+Paused: Süre akışı durur; kritik öncelik çalışmaz, overlay açıkken sıralama freeze edilir.
+
+Expired: Kart kritik sayılmaz; “Süre Doldu” rozeti görünür, kırmızı glow kapatılır.
+
+
+
+---
+
+26.7 Performans & Uygulama Notları
+
+Sıralama veri katmanında yapılır; DOM’a yalnız minimal değişiklik yansır.
+
+Virtualized listelerde comparator güncelle yöntemi önerilir.
+
+Pure CSS grid’de order kullanılabilir, ancak odak sırası için gerekirse DOM reflow yapılır.
+
+Reflow ve repaint minimuma indirilir.
+
+Animasyonlar yalnız transform ve opacity ile uygulanır.
+
+
+
+---
+
+26.8 Erişilebilirlik
+
+Kritik/süper kritik ilk geçişte aria-live="polite" üzerinden kısa bildirim:
+
+Örn. “Kritik: 5 dk altı”.
+
+
+Aynı bildirim 60 sn içinde tekrar gönderilmez (spam önleme).
+
+prefers-reduced-motion: reduce durumunda blink/glow statik vurguya dönüşür.
+
+
+
+---
+
+26.9 Telemetri (Opsiyonel)
+
+card:priorityChange olayında from → to geçişleri sayılır.
+
+Kritik/süper kritik giriş/çıkış metrikleri tutulur (operasyonel raporlar).
+
+
+
+---
+
+26.10 Olaylar (Events)
+
+card:priorityChange → { id, priority: 'normal'|'critical'|'super_critical', leftMin }
+
+Mevcut olaylar (extend/undo/pause/resume/finish/…) korunur.
+
+
+
+---
+
+26.11 Yapılandırma (Config)
+
+CRITICAL_MIN = 5                  // dk
+SUPER_CRITICAL_MIN = 2            // dk
+RESORT_DEBOUNCE_MS = 800          // ms
+RESORT_THROTTLE_PER_SEC = 1       // işlem/sn
+CRITICAL_GLOW_PERIOD_MS = 1400    // ms
+SUPER_GLOW_PERIOD_MS = 1200       // ms
+AUTO_SCROLL_ENABLED = true
+AUTO_SCROLL_DURATION_MS = 400
+TOAST_SUPPRESSION_WINDOW_MS = 60000
+
+
+---
+
+26.12 Kabul Kriterleri (Checklist)
+
+[ ] leftMin ≤ 5 → kritik; ≤2 → süper kritik.
+
+[ ] Kritik/süper kritik kartlar üst sıraya stabil kurallarla taşınır (debounce/throttle aktif).
+
+[ ] Kullanıcı etkileşimi sırasında yeniden sıralama yapılmaz; bitince uygulanır.
+
+[ ] Glow/Blink ≤3 Hz; prefers-reduced-motion destekli.
+
+[ ] Durum alanı hiyerarşisi korunur; opsiyonel rozet hizayı bozmaz.
+
+[ ] Auto-scroll yalnız uygun koşullarda çalışır; modalları bozmaz.
+
+[ ] Pause → freeze, Expired → glow kapanır.
+
+[ ] card:priorityChange doğru payload ile tetiklenir.
+
+[ ] Sıralama & animasyonlar reflow yapmadan akıcıdır.
+
+
+27) Saniye Şeridi (Second Strip) – Mikro Zaman Göstergesi
+
+Amaç: Ring (dk bazlı) yanında, akış hissini güçlendiren, saniye seviyesinde akıcı bir “şerit” ile anlık ilerlemeyi göstermek.
+
+27.1 Konum & Yerleşim
+
+Varsayılan yer: Ring’in iç bileziği ile merkez metin arasındaki halka boşluğu (inner track).
+
+Genişlik: 2–3 px (ince bant).
+
+Alternatif (dar ekran): Ring’in dış çevresinde 2 px’lik ultra ince ikincil kontur (UI responsiveliğine göre otomatik seçilir).
+
+27.2 Görsel Stil
+
+Renk: Eşik temasına bağlı (ok/warn/danger).
+
+Opaklık ring’den %10–15 daha düşük; gradient çok hafif.
+
+Uç pulu: Şerit ucunda minik bir “ışık pulu” (2–3 px glow) saniye akışını vurgular.
+
+Motion safe: prefers-reduced-motion: reduce aktifse şerit sabit, glow yok.
+
+27.3 Zamanlamalar
+
+60 s periyot: Şerit 0→360° döner.
+
+Paused: Şerit tamamen durur (freeze); overlay aktifken görünmeye devam edebilir ama hareket etmez.
+
+Expired: Şerit 0°’da sönümlenerek kaybolur (fade-out 200 ms).
+
+27.4 Performans
+
+Canvas ile aynı requestAnimationFrame loop’unda çizilir; yalnızca açı değeri güncellenir.
+
+Mobilde throttling: 60→30 FPS düşebilir (battery saver).
+
+27.5 Erişilebilirlik
+
+SR metni (aria-live=off): Görsel ipucu olduğu için ekran okuyucuda anlatılmaz (zaten süre sayısı/overlay var).
+
+27.6 Kabul Kriterleri
+
+Saniye şeridi ring ile senkron akar; pause’da donar, resume’da kaldığı yerden devam.
+
+Eşik rengiyle tutarlı, glow aşırı dikkat dağıtmaz.
+
+
+28) Kart Mikro-Fizik – Hafif Döndürme/Eğilme (Tilt)
+
+Amaç:
+Kartı “tutma/çekme” hissi veren, çok hafif 3D tilt efekti.
+
+
+---
+
+28.1 Tetik
+
+Pointer kart üstündeyken drag niyeti algılanınca tilt başlar:
+
+Koşul: pointerdown (primary) + 4–6 px hareket eşiği (|dx|+|dy| ≥ eşi̇k).
+
+pointerdown ile pointer capture alınır; startX,startY kaydedilir.
+
+
+Normal hover’da tilt yoktur.
+
+
+
+---
+
+28.2 Görsel
+
+Dönüşüm: transform: rotate3d(ax, ay, 0, 2.5–3.5deg) translateZ(0)
+
+3D eksen: Fare/pointer konumuna göre dinamik (X/Y yüzey eğimi).
+
+Gölge: Elevation bir kademe artar (shadow blur +10–15%).
+
+Performans ipucu: will-change: transform uygulanır (GPU hızlandırma).
+
+
+
+---
+
+28.3 Sınırlar
+
+Maks eğim ±4°’ü geçmez (baş dönmesi/rahatsızlık yok).
+
+prefers-reduced-motion: reduce → tilt pasif, yalnız shadow artar.
+
+Tilt sırasında text selection ve page scroll etkilenmemelidir.
+
+Geçici olarak: user-select: none; ve gerekirse touch-action: none;
+
+
+
+
+---
+
+28.4 Geri Dönüş
+
+Drag sonlanınca 120–180 ms ease-out ile nötre döner:
+
+Sıfırlama: transform: rotateX(0) rotateY(0) translateZ(0)
+
+
+pointerup, pointercancel veya lostpointercapture geldiğinde anında reset.
+
+
+
+---
+
+28.5 Çakışma Önleme
+
+Devre dışı: Overlay, Modal, Detay Panel açıkken tilt çalışmaz.
+
+Kritik sıralama (Madde 26): Tilt aktifken liste freeze (yeniden sıralama yok); etkileşim bitince queued işlemler uygulanır.
+
+Drag & Merge (29) akışında tilt sadece “drag niyeti” evresinde; modal/panel açıldığında tilt kapanır.
+
+
+
+---
+
+28.6 Kabul Kriterleri (Checklist)
+
+[ ] Tilt yalnız drag niyeti algılanınca çalışır; hover’da tetiklenmez.
+
+[ ] Maks dönüş ±4° ile sınırlıdır; çerçeve ve içerik okunaklı kalır.
+
+[ ] Drag bitince 120–180 ms içinde yumuşakça nötre döner.
+
+[ ] Overlay/Modal/Detay açıkken tilt devre dışıdır.
+
+[ ] Tilt sırasında frame drop gözlemlenmez; GPU hızlandırma aktiftir.
+
+[ ] prefers-reduced-motion etkinse tilt pasif, yalnız gölge artışı uygulanır.
+
+[ ] Tilt süresince istenmeyen seçim/scroll oluşmaz (user-select: none, touch-action: none).
+
+
+28.7 Çakışma Güvenliği
+
+Tooltip/Context menü çakışması: Tilt aktifken kart üzerindeki tooltip/hover durumları bastırılır; pointermove ile tilt sürerken tooltip açılmaz.
+
+Baloncuk menü (+) çakışması: + menüsü açıldığında tilt devre dışıdır; menü kapanana kadar tilt tetiklenmez.
+
+Kısayol/klavye odak: Detay panel/Modal odakta iken (focus trap) tilt hiçbir koşulda başlamaz.
+
+Çoklu dokunma (multi-touch): Birden fazla temas noktası algılanırsa tilt hemen sıfırlanır; yalnız tek parmak/pointer desteklenir.
+
+Yapışma/sürükleme eşiği: drag threshold aşılmadan (4–6 px) tilt başlar, gerçek taşıma (29) başlayınca tilt sabitlenir (ek eğim uygulanmaz).
+
+Iframe/üst katmanlar: Kart kısmen iframe veya fixed üst katmanla örtüşüyorsa tilt devre dışıdır; olaylar köpürerek (bubbling) üst katmana geçmez.
+
+
+28.8 Katmanlama & Etkileşim Sırası
+
+Z-index kontrolü: Tilt sırasında z-index yalnız görsel geri bildirim için +1 kademeye çıkar; etkileşim yakalama (pointer-events) hiyerarşisi değişmez.
+
+Scroll konteynerleri: Kart, dikey kaydırmalı listede ise tilt aktifken momentum scroll önceliklidir; uzun sürüklemede tilt otomatik kapanır, scroll devreye girer.
+
+Drag iptali senaryosu: Sürükleme başarısız bırakıldığında kart eski konumuna 120–180 ms içinde döner; tilt reset ile senkron kapatılır (çifte animasyon yok).
+
+Platform jestleri: Mobilde kenar-geri (edge swipe) jesti algılanırsa tilt anında sıfırlanır; sistem jestleri önceliklidir.
+
+
+28.9 Teknik Koruma & Telemetri
+
+Debounce/Rate-limit: pointermove tabanlı tilt güncellemeleri raf ile kare başına 1 kez uygulanır; ek debounce 16–24 ms (low-end cihazlar).
+
+Guard flags: Tilt state’i için isTiltActive, isDragging, isOverlayOpen gibi bayraklar tek kaynakta yönetilir; yarış durumu (race) görülmez.
+
+Hata toleransı: lostpointercapture/pointercancel gibi olaylar geldiğinde tilt her zaman sıfırlanır (fail-safe).
+
+Telemetri (opsiyonel): tilt.start, tilt.end, tilt.cancel olayları sayılır; 60 sn’de % frame drop > %1 ise tilt otomatik devre dışı bırakılır (feature degrade).
+
+
+28.10 Kabul Kriterleri (İlave)
+
+[ ] + menüsü, Detay paneli veya herhangi bir modal açıkken tilt tetiklenmez.
+
+[ ] Multi-touch algılanınca tilt anında kapanır; yalnız tek pointer desteklenir.
+
+[ ] Tooltip/hover içerikleri tilt sırasında açılmaz; tilt bitince normale döner.
+
+[ ] Drag başladığında tilt sabitlenir; bırakmada tilt ve konum senkron sıfırlanır.
+
+[ ] Düşük donanımda tilt kare güncellemesi raf + debounce ile akıcıdır; frame drop gözle görülmez.
+
+[ ] Fail-safe: pointercancel/lostpointercapture her zaman tilt’i resetler.
+
+29) Kart Birleştirme (Drag & Merge) – Hesap Konsolidasyonu
+
+Amaç: Müşteri talebiyle iki kartı sürükle-bırak birleştirme; süreleri tek oturumda toplama, ödeme/hesap ayrıştırmayı koruma.
+
+29.1 Drag Başlatma
+
+Tutma bölgesi: Kart üst başlık (Head) alanı (Madde 4).
+
+İmleç & geri bildirim: “Grab” imi (cursor) + hafif tilt & gölge güçlenmesi (Madde 28 ile uyumlu).
+
+Drag ghost: Kartın yarı saydam shadow kopyası pointer ile hareket eder.
+
+Koruma: pointerdown ile pointer capture alınır; startX,startY kaydedilir (ghost yalnız bu kart için oluşturulur).
+
+
+
+---
+
+29.2 Hedefleme & Önizleme
+
+Eşik: Hedef kartta %50 örtüşme aşıldığında “merge adayı” olur.
+
+Önizleme: Hedef kart scale(.98) + mavi kenar (hazır göstergesi).
+
+Katmanlama: Üstteki (dragged) kart yarı saydam ve z-index’i artar; hedef kart odaklı outline görünür.
+
+Snap kuralı: Kart bbox alanının %50’si + merkez yakınlığı sağlanmadan “merge adayı” değildir.
+
+
+
+---
+
+29.3 Bırakma & Onay
+
+Drop’ta modal:
+
+Başlık: “Hesapları Birleştir”
+
+Metin: “{Çocuk A} ve {Çocuk B} oturumlarını birleştirmek istiyor musunuz?”
+
+Bilgi: leftMinA + leftMinB = toplam süre
+
+Butonlar: “İptal” / “Evet, Birleştir”
+
+Erişilebilirlik: Focus trap, klavye erişimi, Esc ile kapanma
+
+
+Onay akışı:
+
+“İptal” → hiçbir değişiklik yapılmaz (kartlar eski haline döner).
+
+“Evet, Birleştir” → birleştime mantığı (29.4) uygulanır.
+
+
+
+
+---
+
+29.4 Birleştirme Mantığı
+
+“Evet, Birleştir” → tek kart kalır (üstteki veya hedef – tercihen hedef kart).
+
+Yeni kart state:
+
+leftMin = leftMinA + leftMinB
+
+startHHMM = min(startA, startB)
+
+endHHMM kalan süre ve iş kuralına göre yeniden hesap
+
+log iki kartın log’ları zaman sırasıyla merge edilir (kaynak kart ID’leri belirtilir)
+
+kidSeq birincil kartın numarası korunur; ikincil kartın kidSeq’i log’a “birleştirildi” notuyla yazılır (ID metninde kopyalanabilir not)
+
+status, paused: Her ikisi aktifte ise aktif; biri paused ise aktif karta uyum (modalda bilgi verilir)
+
+
+Kapanan kart (ikincil): UI’dan fade+shrink ile kalkar; shell’de “merged” durumu loglanır.
+
+Event: card:merged → { keptId, mergedId, newLeft, newEnd }
+
+
+
+---
+
+29.5 Ödeme/Ayrıştırma Kuralı
+
+“Bitir” (Madde 16 & 24): Toplam süre tek seans olarak işlenir.
+
+Faturalama/Ödeme: Her iki çocuğun kalemleri ayrı satırda (isim + pay), ayrıca toplam gösterilir.
+
+Pay kuralı: Varsayılan oranlama birleşme anındaki kalan süre katkısına göre.
+
+Opsiyonel yapılandırma: sabit/yarı yarıya.
+
+
+UI örneği: “Ali — 37 dk (Katkı %58)” / “Ayşe — 27 dk (Katkı %42)”.
+
+
+
+---
+
+29.6 İptal/Çakışma Durumları
+
+Modal İptal: Hiçbir değişiklik yapılmaz; kartlar geri döner.
+
+Kilitleme: Overlay/Modal/Detay panel açıkken veya + menüsü açıkken merge başlatılamaz (drag kilit).
+
+Kritik sıralama (Madde 26): Merge sürerken freeze; bittiğinde yeniden açılır.
+
+
+
+---
+
+29.7 Telemetri & Event’ler
+
+card:mergeStart → { fromId, toId }
+
+card:mergeCancel → { fromId, toId }
+
+card:merged → { keptId, mergedId, newLeft, newEnd }
+
+
+
+---
+
+29.8 Kabul Kriterleri (Temel)
+
+[ ] %50 örtüşme + merkez yakınlığı olmadan onay modalı açılmaz.
+
+[ ] Log’lar birleşir; kaynak kimlikler işlidir.
+
+[ ] Bitir ekranında kalemler ayrı gösterilir; toplam doğru hesaplanır.
+
+[ ] Performans akıcı; reflow minimal; motion safe (≤3 Hz).
+
+
+
+---
+
+29.9 Çakışma Güvenliği (Ek Zorunlu Kurallar)
+
+Tek hedef kuralı: Drag süresince aynı anda yalnız 1 hedef kart “merge adayı” olabilir; çoklu çakışmada en yakın merkez seçilir.
+
+Race condition koruması: Aynı iki kart için eşzamanlı iki merge onayı engellenir (atomic lock).
+
+Cross-device koruması: Aynı kartlar başka bir oturumda birleştiriliyorsa mevcut modal disable olup “Bu kart başka bir işlemde birleştirildi” uyarısı gösterilir.
+
+Paused/Expired önceliği:
+
+Expired kart hedef olamaz (modal açılmaz).
+
+Paused kart hedef olabilir; resume etmeksizin süreler toplanır (kullanıcıya modalda bilgi).
+
+
+Undo ile çakışma: Son uzatma için undo penceresi (30 sn) açıksa merge onayı sırasında uyarı gösterilir; onay sonrası undo penceresi kapanır.
+
+Özel giriş/ + menü: + menüsü veya “Özel süre” modalı açıksa drag devre dışıdır; önce kapat uyarısı.
+
+Detay panel/Bitir modal: Açıkken drag/merge başlatılamaz; focus trap korunur.
+
+
+
+---
+
+29.10 Teknik Koruma & Uygulama Notları
+
+Pointer yönetimi: pointercapture ile tek kaynak; lostpointercapture/pointercancel geldiğinde drag iptal ve görsel durum reset.
+
+Ghost görüntü: HTML5 DnD kullanılıyorsa setDragImage(şeffaf 1×1) ile varsayılan ghost gizlenir; custom ghost kullanılır.
+
+Z-index & pointer-events: Drag’lenen kart z-index +1 alır; pointer-events hiyerarşisi değişmez (yanlış tıklama önlenir).
+
+Debounce: dragover hedef algısı raf ile kare başına 1 kez değerlendirilir (CPU düşürme).
+
+Sanitizasyon: Modal metinlerinde XSS sanitize; log metinleri aynı sanitize zincirinden geçer.
+
+Atomiklik: Birleştirme işlemi tek transaction; kart state, log ve faturalama verisi tutarlı kalır. Hata → rollback + kırmızı toast.
+
+
+
+---
+
+29.11 Erişilebilirlik
+
+Klavye desteği (opsiyonel):
+
+Head odağındayken M → “Birleştirme Modu”.
+
+Yön tuşları ile hedef kart seçimi; Enter ile onay modala geçiş.
+
+
+SR duyuruları: “Birleştirme adayı”, “Birleştirme onaylandı/iptal edildi” kısa bildirimleri aria-live="polite" ile.
+
+Odak yönetimi: Modal açıldığında odak İptal üzerinde; Esc ile kapanır; kapanınca odak kaynak karta döner.
+
+
+
+---
+
+29.12 Kabul Kriterleri (Genişletilmiş)
+
+[ ] Aynı anda yalnız 1 hedef kart merge adayı olabilir.
+
+[ ] Expired hedeflere modal açılmaz; Paused hedeflerde bilgi verilir.
+
+[ ] Aynı kart çifti için eşzamanlı iki merge onayı engellenir (atomic lock).
+
+[ ] + menüsü/Özel süre/Detay/Bitir açıkken drag/merge başlamaz.
+
+[ ] Undo penceresi açıksa uyarı gösterilir; onay sonrası pencere kapanır.
+
+[ ] card:mergeStart/mergeCancel/merged event’leri doğru payload ile yayınlanır.
+
+[ ] Hata durumunda rollback yapılır ve kırmızı ⚠️ toast çıkar.
+
+[ ] Klavye akışı (opsiyonel) erişilebilir; odak yönetimi kurala uygundur.
+
+[ ] Performans: dragover değerlendirmesi raf/debounce ile akıcıdır.
+
+
+30) Görsel İpucu & Çakışma Güvenliği
+
+30.1 Görsel İpucu
+
+Drag esnasında hedef kart altında hafif çapraz (2–4°) bir gölge/kopya görünümü; üstteki kart yarı saydam durur.
+
+Z-index: Üstteki kart > hedef kart; hedef kart scale(.98) + subtle highlight.
+
+
+30.2 Geçişler
+
+Drag → target hover: 120 ms içinde highlight ve tilt uygulanır.
+
+Drop iptal: 180 ms’de her şey nötre döner.
+
+
+30.3 Erişilebilirlik
+
+Görsel değişimler SR’a duyurulmaz (pure decoration).
+
+Klavye ile merge: Head odağındayken M kısayolu → yön tuşları ile hedef seçimi → Enter ile modal.
+
+
+30.4 Kabul Kriterleri
+
+Üst üste hissi net ama dikkat dağıtmaz; ring / ikonlar okunaklı kalır.
+
+Motion reduce’da yalnız sınır vurgusu kalır; tilt/scale pasifleşir.
+
+
+
+---
+
+30.5 Çakışma Önleme (Ek Güvenlik)
+
+Overlay/Modal açıkken: Görsel ipuçları (highlight/tilt) tetiklenmez.
+
++ menüsü / özel süre modalı açıksa drag görsel efektleri devre dışıdır.
+
+Detay Paneli açıkken merge ipuçları pasif; focus trap korunur.
+
+Kritik sıralama (Madde 26) sırasında highlight dondurulur; yeniden sıralama merge bitince çalışır.
+
+Undo (25) zaman penceresi açıksa highlight gösterilir ama modalda ayrıca “Son uzatma geri alınabilir durumda” uyarısı çıkar.
+
+
+30.6 Teknik Notlar
+
+FPS optimizasyonu: Highlight animasyonları requestAnimationFrame ile 1 frame’de 1 güncelleme.
+
+Pointer cancel: pointercancel veya lostpointercapture tetiklenirse highlight/tilt anında resetlenir.
+
+Atomic lock: Aynı anda birden fazla hedef için görsel ipucu oluşmaz; yalnız en yakın merkez hedef highlight alır.
+
+Motion safety: prefers-reduced-motion: reduce → sadece renk vurgusu kalır, tilt/scale iptal.
+
+
+30.7 Kabul Kriterleri (İlave)
+
+[ ] Overlay/Modal/Detay açıkken drag highlight tetiklenmez.
+
+[ ] Yalnızca 1 hedef kart aynı anda highlight olabilir.
+
+[ ] pointercancel durumunda tüm görsel ipuçları resetlenir.
+
+[ ] Highlight/tilt akıcıdır; low-end cihazda FPS düşmez.
+
+[ ] prefers-reduced-motion: reduce aktifken yalnız renkli kenar görünür, animasyon yok.
+
+
+31)Kart Ayırma (Split) – Birleştirilmiş Hesapların Geri Çözülmesi (Ultra Detay)
+
+31.1 Amaç
+
+Birleştirme (merge) sonrasında tek karta dönüşen iki (veya daha fazla) çocuğun oturumunu, tek aksiyonla tekrar birleştirme öncesindeki özgün hâllerine geri döndürmek.
+
+Kullanıcı “ayır” dediğinde, pre-merge snapshot’ları eksiksiz geri yüklenir: süreler, başlangıç/bitiş saatleri, uzatma/undo geçmişi, loglar, durum rozetleri, Kid ID’ler ve görsel düzen (grid sırası) dahil.
+
+31.2 Önkoşullar & Varsayımlar
+
+Split yalnız merge ile oluşturulmuş birleşik kartlar için görünür/etkindir.
+
+Merge anında sistem, tüm kaynak kartların tam snapshot’larını (state + log + görsel konum) tek bir mergeGroupId altında saklar.
+
+Bir kart birleştirildikten sonra yeni uzatmalar/kısaltmalar vs. yapılmış olabilir; “Önceki hâline geri getir” kuralı pre-merge snapshot’ı aynen restore eder (merge sonrası değişiklikler kaybedilir).
+
+Eğer “değişiklikleri koru” gereksinimi istenirse, opsiyonel “Oransal Böl” modu 31.5’te tanımlanır (varsayılan değil).
+
+31.3 UI Giriş Noktaları
+
+Detay Paneli: Üst aksiyon barında “Ayır (Split)” butonu (makas/ayırma ikonu).
+
+Kart Kapa Menüsü (⋯) (varsa): “Ayır (Split)” maddesi.
+
+Klavye: Detay paneli odağındayken Shift+S kısayolu (opsiyonel).
+
+Durum Kısıtı: Bitir/Tahsil modalı, + menüsü, Özel Süre girişi veya sürükleme devam ederken Ayır butonu devre dışı.
+
+31.4 Temel Akış (Geri Yükleme Modu – ZORUNLU)
+
+Kullanıcı “Ayır (Split)”e tıklar.
+
+Onay Modalı açılır:
+
+Başlık: “Birleştirmeyi Geri Al”
+
+Metin: “Bu birleşik oturumu, birleştirme öncesindeki ayrı kartlara geri döndürmek istiyor musunuz? Birleşik kartta yapılmış son değişiklikler kaybolur.”
+
+Butonlar: “İptal” (nötr), “Evet, Ayır” (vurgulu).
+
+“Evet, Ayır” → Sistem pre-merge snapshot’larını 1:1 restore eder:
+
+Birleşik kart fade-out + shrink ile kapanır (silinmez log için soft-delete flag tutulur).
+
+Kaynak kartlar aynı grid konumlarına (mümkünse) veya en üst mantıklı boşluklara fade-in + slight-tilt ile görünür.
+
+Tüm state alanları (leftMin, start/endHHMM, paused, status, lastExtend, undo stack, log, rozetler, vs.) merge öncesindeki değerlerine döner.
+
+Kid ID’ler özgün halleriyle gelir (001/002…; birleşik kartın geçici ID’si kullanılmaz).
+
+Toast (kart içi): “Birleştirme geri alındı. Oturumlar ayrıldı.”
+
+Detay panel loglarına otomatik kayıt eklenir: “[HH:MM:SS] Birleştirme geri alındı (Split).”
+
+Event yayınları (bkz. 31.7).
+
+31.5 Opsiyonel Akış (Oransal Böl – İSTEĞE BAĞLI)
+
+Varsayılan kapatılsın; ürün sahibi isterse açılır.
+
+Onay modalında ikincil seçenek olarak “Oransal Böl” toggle’ı gösterilebilir.
+
+Oransal Böl mantığı (yalnız gerekiyorsa):
+
+Birleşik kartın toplam leftMin değeri, merge öncesi oranlarına göre kartlara pay edilir.
+
+Örn: Merge öncesi A=30 dk, B=10 dk (toplam 40). Split anında birleşik kart 24 dk ise; A=18 dk, B=6 dk pay alır.
+
+start/end saatleri uygun şekilde güncellenir; log’a “Oransal böl” notu düşülür.
+
+UNDO/LOG geçmişi oransal böl modunda birleştirme öncesi loglarla beraber korunur; split anına ek bir kayıt eklenir.
+
+Bu mod kullanılırsa, onay modalı ayrıca uyarır: “Değişiklikler korunarak süreler oransal olarak dağıtılacaktır.”
+
+31.6 State & Veri Yönetimi
+
+mergeGroupId: Birleştirmede kaynak kartların kimliği; split sırasında restore anahtarıdır.
+
+preMergeSnapshots[]: Her kaynak kart için tam state dump: { id, kidSeq, child, parent, gender, startHHMM, endHHMM, leftMin, paused, lastExtend, undo[], log[], status, gridOrder, visualPose }
+
+mergedCardState soft-delete: split’ten sonra kart listeden kalkar, audit için kısa süre tutulabilir.
+
+Atomiklik: Split işlemi atomic olarak gerçekleşir; tüm kaynak kartlar ya birlikte restore edilir ya hiçbiri.
+
+31.7 Olaylar (Events)
+
+card:split:confirm → { mergedId, mergeGroupId, mode: 'restore'|'proportional' }
+
+card:split:restored → { mergeGroupId, restoredIds: string[] }
+
+card:split:failed → { mergedId, reason }
+
+Bu event’ler, raporlama/telemetri ve liste yeniden yükleme için shell tarafından dinlenir.
+
+31.8 Görsel/Animasyon Davranışları
+
+Birleşik kart kapanışı: fade-out + slight-shrink (0.96), 160–220 ms.
+
+Ayrılan kartların gelişi: fade-in + slight-tilt (±2–3°), 140–200 ms.
+
+Grid repoze debounce’lu (≥300 ms); açık modal/panel/drag varken yok.
+
+Prefers-reduced-motion: Animasyonlar devre dışı → sade görünür/gizlenir.
+
+31.9 Kenar Senaryoları
+
+Paused birleşik kartı split: Kaynak kartlar kendi paused durumlarına geri döner (snapshot).
+
+Expired birleşik kart: Kaynak kartlar da snapshot’a göre expired/active döner; birleşik kartın expired oluşu tek başına belirleyici değildir.
+
+Birleşik kartta + menüsü açıkken split: Split yürütülmez; önce menü kapatılır uyarısı: “Devam etmeden önce işlemi tamamlayın.”
+
+Ödeme/Bitir modalları açıkken split: izin verilmez; modalı kapat uyarısı.
+
+Sürükleme (drag) esnasında split: sürükleme bittiğinde aktifleşir.
+
+Merge sonrası uzatma/undo yapılmışsa ve restore modu seçilmişse: Bu değişiklikler kaybolur (modal uyarır).
+
+Veri tutarlılığı: Kid ID ve log satırları kendi timeline’larına dönmeli; birleşik kartın log’u soft-archived.
+31.10 Erişilebilirlik
+
+Ayır butonu: aria-label="Birleştirmeyi geri al (Ayır)".
+
+Onay modalı: Focus trap; Esc ile kapanır; ilk odak “İptal”dedir.
+
+Ekran okuyucu: Toast mesajları aria-live="polite" ile okunur.
+
+Klavye kısayolu (opsiyonel) kullanılacaksa açıklaması yardım içinde yer alır.
+
+31.11 Telemetri (Opsiyonel)
+
+split.open (modal açıldı), split.confirm (onay), split.cancel, split.fail nedenleri.
+
+restore vs proportional mod metrikleri.
+
+split sonrası ilk 60 s içinde geri dönüş oranı (kullanıcı memnuniyeti metriği).
+
+31.12 Kabul Kriterleri (Checklist)
+
+Birleşik kartta “Ayır (Split)” giriş noktası yalnız merge’lü kartlarda görünür.
+
+Onay modalı, “değişiklikler kaybolur” bilgisini açık ve net verir.
+
+“Evet, Ayır” → pre-merge snapshot’ları eksiksiz yüklenir (süre, saatler, paused, status, log, undo, Kid ID, gridOrder).
+
+Toast: “Birleştirme geri alındı. Oturumlar ayrıldı.” gösterilir.
+
+Event’ler doğru payload ile tetiklenir (split:confirm, split:restored).
+
+Görsel geçişler akıcıdır; prefers-reduced-motion’a saygı vardır.
+
+Açık panel/menü/modal/drag varken split devre dışıdır (konfliktsiz).
+
+(Opsiyonel) Oransal böl devredeyse, paylaştırma doğru oranda yapılır ve log’lanır.
+
+Hata durumunda split:failed ateşlenir ve kırmızı ⚠️ toast çıkar: “Ayırma başarısız. Lütfen tekrar deneyin.”
+
+31.13 Yapılandırma (Config)
+
+SPLIT_MODE_DEFAULT = 'restore' // zorunlu varsayılan
+
+SPLIT_ALLOW_PROPORTIONAL = false // opsiyonel
+
+SPLIT_ANIM_IN_MS = 180
+
+SPLIT_ANIM_OUT_MS = 200
+
+SPLIT_DEBOUNCE_RENDER_MS = 300
+
+SPLIT_TOAST_DURATION_MS = 2200
+
+31.14 Kullanıcı Metinleri (Yerelleştirme)
+
+“Birleştirmeyi geri al”
+
+“Bu birleşik oturumu, birleştirme öncesindeki ayrı kartlara geri döndürmek istiyor musunuz? Birleşik kartta yapılmış son değişiklikler kaybolur.”
+
+Butonlar: “İptal” / “Evet, Ayır”
+
+Toast başarı: “Birleştirme geri alındı. Oturumlar ayrıldı.”
+
+Toast hata: “Ayırma başarısız. Lütfen tekrar deneyin.”
+
+Uyarı (işlem kilidi varken): “Devam etmeden önce açık işlemi kapatın.”
+
+31.15 Çakışma Güvenliği & Ek Önlemler
+
+Atomic Transaction: Split işlemi tek transaction’dır; snapshot geri yükleme yarım kalamaz. Hata olursa tüm restore rollback edilir ve kırmızı ⚠️ toast çıkar.
+
+Tekrar Split Kilidi: Aynı mergeGroupId için eşzamanlı birden fazla split denemesi engellenir (global lock).
+
+Çoklu Oturum Koruması: Kart başka bir cihaz/oturumda split ediliyorsa, mevcut kullanıcıya “Bu kart başka bir işlemde ayrıldı” uyarısı gösterilir ve split iptal olur.
+
+Undo / Merge Çakışması: Split yapılırken aynı kart için undo/merge tetiklenemez; bu event’ler kilitlenir.
+
+Overlay/Modal Önceliği: Bitir/Ödeme, + menüsü, özel süre girişi veya drag açıkken Split butonu pasif olur.
+
+Kritik Sıralama (Madde 26) ile Uyum: Split işlemi sırasında kritik sıralama freeze edilir; kartlar restore edildikten sonra yeniden açılır.
+
+Detay Panel Çakışması: Detay panel açıkken split tetiklenirse, panel otomatik kapanır ve restore sonrası yeniden açılır (UI state bozulmaz).
+
+Grid Tutarlılığı: Restore edilen kartlar gridOrder’a sadık kalır; boş alan yoksa otomatik en üste eklenir.
+
+
+31.16 Kabul Kriterleri (İlave)
+
+[ ] Aynı mergeGroupId için aynı anda yalnızca tek split işlemi çalıştırılabilir.
+
+[ ] Split sırasında başka event (undo, merge, extend, finish) tetiklenemez.
+
+[ ] Hata durumunda snapshot restore rollback edilir; hiçbir kart kaybolmaz.
+
+[ ] Kritik sıralama ve grid yeniden pozisyonlama split ile çakışmaz; sıralama split sonrası yapılır.
+
+[ ] Çoklu oturum senaryosunda ikinci split denemesi engellenir ve uyarı çıkar.
+
+[ ] UI: Detay panel, modal veya menü açıkken split butonu pasif görünür.
+
+
+
+32) Tilt ve Sürükleme Görselleştirmesi (Yalnız Basılıyken; Ghost Yok)
+
+Amaç
+
+Kart hover’da eğilmez; yalnız pointer basılıyken hareket ettirildiğinde tilt olur.
+Sürüklemede tarayıcının ghost önizlemesi devre dışı bırakılır; kartın kendisi hareket eder.
+
+
+---
+
+32.1 Tilt Kuralları
+
+Hover’da tilt yok: pointerover/hover tetiklemez.
+
+Başlatma: pointerdown (primary button) → pointer capture + startX,startY kaydı.
+
+Aktif tilt: Basılıyken pointermove → dx,dy hesaplanır → rotateX(dy*k) + rotateY(-dx*k).
+
+k = 0.08–0.12
+
+sınır: |rotateX|, |rotateY| ≤ 6°.
+
+
+Akış: GPU hızlandırmalı transform; transition: transform 120ms ease-out (frame bazlı akışı bozmadan).
+
+Sıfırlama: pointerup, pointercancel, lostpointercapture → rotateX(0) rotateY(0).
+
+Koruma: Tilt süresince user-select: none; touch-action: none;.
+
+
+
+---
+
+32.2 Sürükleme Kuralları (Ghost Yok)
+
+Gerçek kart hareketi: Kart position: fixed/absolute + pointer’ı takip eder; z-index yükselir.
+
+HTML5 DnD fallback: dataTransfer.setDragImage(şeffaf 1×1) → ghost görünmez.
+
+Gölge yok: Drop-shadow eklenmez; yalnız hedef kart outline gösterir.
+
+Performans: will-change: transform; → yalnız transform/opacity güncellenir.
+
+Bırakma animasyonu: Başarısız bırakma → 120–180 ms ease-out ile eski konuma döner.
+
+
+
+---
+
+32.3 Hedef Kart Geri Bildirimi
+
+Drag-over: Hedef kart scale(0.985) + outline: 2px dashed (tema rengi).
+
+%50 merkez kuralı: Drag kart merkez noktası hedef kutunun %50 alanına girince merge adayı olur.
+
+Drop/onay: Modal açılır → Evet: merge, Hayır: eski konuma döner.
+
+
+
+---
+
+32.4 Erişilebilirlik & Uyumluluk
+
+Tilt/sürükleme yalnız pointer ile; klavye kullanıcıları etkilenmez.
+
+prefers-reduced-motion: reduce: Tilt açıları %50 azaltılır; animasyon süresi kısalır.
+
+Merge / Split / Bitir / Undo akışlarıyla çakışmaz.
+
+
+
+---
+
+32.5 Çakışma Güvenliği (Ek)
+
+Overlay/Modal/Detay açıkken: Tilt ve drag pasif.
+
++ menüsü/özel süre modalı açıkken: Tilt & drag başlatılamaz.
+
+Kritik sıralama (26): Tilt veya drag aktifken sıralama freeze edilir, işlem bitince açılır.
+
+Multi-touch: Birden fazla pointer algılanırsa tilt/drag iptal edilir.
+
+Undo (25): Undo penceresi açıksa drag/merge sırasında uyarı gösterilir; işlem bitince pencere kapanır.
+
+Pointer cancel: lostpointercapture / pointercancel her durumda tilt + drag reset.
+
+Atomic lock: Aynı anda yalnız bir kart drag/tilt edilebilir.
+
+
+
+---
+
+32.6 Kabul Kriterleri (Checklist)
+
+[ ] Hover’da tilt yok; yalnız basılıyken tilt aktif.
+
+[ ] Tilt açıları ±6° sınırında.
+
+[ ] pointerup/cancel ile tilt anında sıfırlanır.
+
+[ ] Drag sırasında ghost yok; kartın kendisi hareket eder.
+
+[ ] Performans akıcı; yalnız transform/opacity güncellenir.
+
+[ ] Hedef kart outline/scale ile geri bildirim verir.
+
+[ ] %50 merkez kuralı geçerli.
+
+[ ] Overlay/Modal/Detay/+ menü açıkken tilt/drag devre dışı.
+
+[ ] Kritik sıralama freeze → işlem sonrası açılır.
+
+[ ] Multi-touch iptal → yalnız tek pointer desteklenir.
+
+[ ] Tüm eventler (merge/split/bitir/undo) ile çatışma olmaz.
+
+
+33) Oyunlar Sayfası (Shell) – Üst Çubuk, Sayaçlar ve Küresel Durum
+
+Amaç:
+Kartların yaşadığı konteyner sayfayı ve sayfa çapındaki üst bar, sayaçlar, filtreler ve kullanıcı durumu bileşenlerini tanımlamak.
+
+33.1 Üst Çubuk (Top Bar)
+
+Sol:
+
+Başlık kısmı “ParkMenuPOS • Oyunlar” olarak gösterilir.
+
+Başlığın hemen yanında geri ok (◀) ikonu bulunur.
+
+Bu ikon, kullanıcının ana sayfaya dönmesini sağlar ancak Oyunlar modülündeki tüm kartlar, sayaçlar ve canlı durumlar arka planda çalışmaya devam eder (shell kapanmaz).
+
+Geri ok butonu estetik ve şık bir görünümde olmalıdır:
+
+Yarı saydam (glassmorphic) yüzey,
+
+Hafif iç-gölge ve yuvarlatılmış kenar (radius ≥ 10 px),
+
+Hover’da yumuşak ışık efekti.
+
+Orta:
+
+Arama alanı (adı / ID bazlı),
+
+Filtreler (parkur, durum: active | paused | expired, kritik),
+
+Sıralama seçici (default: Madde 26 öncelik kuralları).
+
+Sağ:
+
+Personel çipi (avatar + ad soyad + rol) ve vardiya / çıkış menüsü.
+
+(Opsiyonel) Canlı saat (HH:MM) gösterimi.
+
+Ek Görsel Özellikler:
+
+Üst bar yüksekliği ≈ 64 px, yatay padding ≈ 20–24 px.
+
+Arka plan: transparan degrade, sayfa temasına göre dinamik.
+
+Metin rengi: açık (beyaz veya açık gri).
+
+Z-index, kart grid’inin üzerindedir; scroll’dan etkilenmez.
+
+Mobilde swipe (parmakla sağa kaydırma) da geri dönüşü tetikler; masaüstünde ESC tuşu desteklenir.
+
+33.2 Sayaç Rozetleri
+
+Aktif: status = active kart sayısı
+
+Kritik: priority ∈ {critical, super_critical}
+
+Duraklatılmış: paused = true
+
+Rozetler shell state’ten canlı güncellenir.
+Tıklanınca ilgili filtre aktif olur; rozet hover’ında renk geçişi animasyonu bulunur.
+
+Renk kodları:
+
+Aktif → #22c55e (yeşil ton)
+
+Duraklatılmış → #94a3b8 (gri / mavi-gri ton)
+
+Kritik → #f97316 (amber / turuncu ton)
+
+Rozet kümesi üst barın hemen altında, grid’in üst kısmında hizalanır.
+
+33.3 Shell State (Örnek)
+type ShellState = {
+  staff: { id:string, name:string, role:'staff'|'manager'|'cashier' },
+  counters: { active:number, critical:number, paused:number },
+  filters: { text?:string, area?:string[], status?:('active'|'paused'|'expired')[] },
+  sort: { by:'priority'|'endTime'|'createdAt', dir:'asc'|'desc' },
+}
+
+
+ShellState tüm global sayaç, filtre ve sıralama değişkenlerini içerir;
+filtre değiştiğinde yalnız görünür kartlar yeniden render edilir (sanallaştırılmış grid).
+
+33.4 Erişilebilirlik (A11y)
+
+Üst çubuktaki tüm öğeler klavye ile erişilebilir.
+
+“Yeni Giriş” butonu ve “geri ok” ikonu aria-label içerir.
+
+Sayaç rozetleri buton rolündedir; odak halkası görünür.
+
+Odak sırası: geri ok → arama → filtreler → rozetler → personel çipi.
+
+33.5 Performans
+
+Sayaçlar shell’in read-model’inden güncellenir, grid yeniden sorgulanmaz.
+
+Filtre / sıralama değişiklikleri yalnız görünür kartları etkiler (virtual DOM optimizasyonu).
+
+Üst çubuk / sayaç bileşenleri GPU akselere CSS transform’lar kullanır, repaint tetiklemez.
+
+33.6 Ek Estetik & Davranış Detayları
+
+Geri ok (◀) ikonu “homeShell()” fonksiyonuna bağlıdır; sadece görünüm değiştirir, shellState’i resetlemez.
+
+Mobilde sağa swipe davranışı “detay paneli kapatma” akışıyla uyumludur.
+
+Üst bar sabittir; oyun kartları grid’i altından akar.
+
+Karanlık ve açık tema desteklenir; renk kontrastı ≥ WCAG AA.
+
+✅ Kabul Kriterleri – 33
+
+ “ParkMenuPOS • Oyunlar” başlığı ve geri ok ikonu görünür.
+
+ ESC ve sağa kaydırma ile ana sayfaya dönüş çalışır, shell kapanmaz.
+
+ Sayaç rozetleri doğru filtreyi uygular, canlı güncellenir.
+
+ Tüm üst bar öğeleri erişilebilirlik standartlarına uygundur.
+
+
+
+34) Yeni Giriş Akışı (Modal/Sayfa)
+
+Amaç: Çocuk/ebeveyn bilgilerinin alındığı akış ve kartın oluşturulması.
+
+34.1 Sunum
+
+Varsayılan: Modal (maks 720–760 px genişlik), dar ekranda tam sayfa.
+
+Adımlar tek ekranda; validasyon anlık (inline).
+
+34.2 Alanlar (Örnek)
+
+Çocuk Adı, Soyadı (zorunlu).
+
+Ebeveyn Adı, Soyadı (zorunlu).
+
+Telefon (maskeli, +90 (5xx) xxx xx xx).
+
+Parkur/Oyun Alanı seçimi (çoklu veya tekli; yapılandırılabilir).
+
+Başlangıç Süresi (dk) — zorunlu.
+
+Not (opsiyonel).
+
+34.3 Kurallar
+
+Zorunlu alanlar boşsa “Oyunu Başlat” pasif.
+
+Başlangıç süresi min=5 dk (yapılandırılabilir), max=180 dk.
+
+Telefon formatı ve parkur seçimi şemaya uymalı.
+
+34.4 Davranış
+
+“Oyunu Başlat” → POST /sessions → başarılıysa: 
+
+Yeni CardState shell’e enjekte edilir,
+
+card:created {id, kidSeq} olayı yayınlanır,
+
+Grid en üst uygun konuma animasyonla gelir (Madde 26 sıralama kuralları korunur).
+
+Hata → kırmızı ⚠️ toast + alan odakları hataya set edilir.
+
+34.5 QR/Parent Portal (Opsiyonel)
+
+Kayıt sonrası QR oluştur seçeneği: ebeveyn kendi cihazından uzatma yapabilsin (bkz. backend maddeleri).
+
+QR tek kullanımlık, 5 dk TTL; yeniden üretilebilir.
+
+34.6 Erişilebilirlik
+
+Form alanlarının label’ları bağlı; hata mesajları aria-live="polite" ile duyurulur.
+
+Modal focus-trap; Esc ile kapanır (kayıp veri uyarısı var ise onay ister).
+
+35) Kart Grid Entegrasyonu (Shell ↔ Kart Kontratı)
+
+Amaç: Kabuk ile kart bileşenlerinin veri ve olay entegrasyonu.
+
+35.1 Veri Akışı
+
+Yeni girişten dönen payload CardState’e dönüştürülür (Madde 17 şeması).
+
+Shell, kartlara props + global event bus ile state taşır; kartlar yalnız kendi event’lerini yayar.
+
+35.2 Olaylar (Shell Dinleyicileri)
+
+card:created → grid’e ekle, sayaçları güncelle.
+
+card:finish → snapshot al, kartı grid’den kaldır, sayaç güncelle.
+
+card:extend / undo / pause / resume → sayaç ve kritik öncelik hesaplarını güncelle.
+
+card:merged / card:split:restored → grid düzenini ve sayaçları yeniden hesapla.
+
+35.3 Sıralama & Filtre Uyumu
+
+Grid sıralaması her zaman Madde 26 kurallarıyla uyumlu; shell’de kullanıcı sıralama değiştirirse sadece görsel order değişir, kart iç mantık etkilenmez.
+
+Etkileşim esnasında freeze kuralları (Madde 26.2) shell tarafından da korunur.
+
+35.4 Sanallaştırma & Performans
+
+50 kartta virtual list zorunlu; yeniden sıralama diffsiz patch’lenir.
+
+Ölçümler: ilk render ≤100 ms/kart hedef; yeniden sıralama ≤16 ms kare.
+
+35.5 Hata Yönetimi
+
+Kart içi hatalar (ör. geçersiz uzatma) hem kart içi toast hem shell log’una düşer; tek kaynaklı doğruluk korunur (Madde 22).
+
+36) Personel Bağlamı, Vardiya ve Yetki
+
+Amaç: Sağ üst personel bilgisi, rol tabanlı kısıt ve denetim izi.
+
+36.1 Personel Kimliği
+
+Üst çubukta Ad Soyad + Rol (örn. Ayşe Yılmaz — Staff), küçük avatar.
+
+Profil menüsü: “Çıkış”, “Vardiya Kapat”, (opsiyonel) “Önceki Vardiyalarım”.
+
+36.2 Rol Bazlı Kurallar
+
+staff: kart tüm etkileşimler (şartnamedeki davranışlar).
+
+manager: geçmiş uzatma iptali, rapor uçları, undo penceresi dışı işlemler.
+
+cashier: ödeme/snapshot ekranlarına erişim, kart mutasyonu yapmaz.
+
+Rol bilgisi shell state’te tutulur; kartlar, rol gerektiren aksiyonda disabled görünür.
+
+36.3 Denetim İzi
+
+Shell, karttan gelen mutasyonları personel kimliği ile session_events’e işler (backend).
+
+Her olay payload’ına staffId (veya parent portalda parentTokenId) eklenir; Detay Paneli log’unda (Madde 15) [personel] etiketi opsiyonel gösterilebilir.
+
+36.4 Erişilebilirlik
+
+Personel menüsü klavye ile açılır; Esc ile kapanır; odak kaybı olmaz.
+
+
+37) Güvenlik & Yetkilendirme (AuthZ/AuthN)
+
+37.1 Oturum & Kimlik Doğrulama
+
+Tüm shell ve API çağrıları TLS üzerinden.
+
+Personel girişi: kısa ömürlü erişim belirteci (access token) + yenileme belirteci (refresh).
+
+Oturum inaktifliği zaman aşımı (örn. 30 dk) ve cihaz başına tek aktif oturum opsiyonu.
+
+
+37.2 Rol Tabanlı Yetki (RBAC)
+
+Roller: staff, manager, cashier (Madde 36 ile tutarlı).
+
+Kart mutasyon uçları (extend/undo/pause/resume/finish/merge/split) sunucuda rol kontrolü ile doğrulanır.
+
+UI’da butonlar disable; sunucu tarafı yine de yetkisiz talebi reddeder.
+
+
+37.3 İstek Doğrulama & Hız Sınırı
+
+Tüm yazan uçlar için idempotency-key (özellikle finish/merge/split) → çift tıklama ve tekrar denemelerde tek işlem.
+
+Rate limit: kullanıcı başına dakikada X yazma işlemi; hatalarda artan bekleme (backoff).
+
+CSRF koruması (web form/sayfa modunda token veya same-site cookie).
+
+
+37.4 QR/Parent Portal Güvenliği (Madde 34.5)
+
+QR token tek kullanımlık, scope = “süre uzatma”, TTL ≤ 5 dk, iptal edilebilir.
+
+En fazla N defa uzatma / toplam T dk sınırı (backend doğrular).
+
+Token replay engeli: nonce + server-side tüketim kaydı.
+
+
+37.5 İstemci Doğrulama
+
+Tüm UI formları şema doğrulaması + sunucu tarafı tekrar doğrulama.
+
+XSS/HTML injection için sanitize: toast, log, tooltip ve modal metinleri (Madde 15 & 22 ile tutarlı).
+
+Clickjacking: X-Frame-Options/Frame-Ancestors ile gömme engeli.
+
+
+Kabul Kriterleri
+
+[ ] Rolü yetmeyen mutasyonlar 403 döner; UI ve log senkron.
+
+[ ] finish/merge/split istekleri idempotency-key ile tekrarda aynı sonuç verir.
+
+[ ] QR token tek kullanımlık, TTL dolduğunda geçersiz.
+
+[ ] Tüm metinler sanitize; XSS testleri geçer.
+
+[ ] CSRF ve rate-limit testleri geçer (pozitif/negatif senaryolar).
+
+
+
+---
+
+38) Olay Sözleşmesi & Bütünlük (Shell ↔ Kart)
+
+38.1 Zaman Otoritesi
+
+Zaman otoritesi sunucu/shell. Kart kendi sayaç zamanını üretmez; drift kabul edilmez (Madde 17 ile tutarlı).
+
+
+38.2 Olay Bütünlüğü
+
+Tüm kart olayları {id, staffId, ts, idempotencyKey} ile imzalı (server-side doğrulama).
+
+Sıralama garantisi: aynı karta ait mutasyonlar sunucuda kuyruklanır (FIFO).
+
+
+38.3 Yarış Durumu Önleme
+
+Merge/Split/Finish için global işlem kilidi (per card or mergeGroupId).
+
+Paralel istekler “409 conflict” + güvenli geri dönüş (rollback) üretir.
+
+
+38.4 Geri Alınabilirlik
+
+Atomic transaction: extend/undo/pause/resume/finish/merge/split her biri tam ya da hiç.
+
+Hata → otomatik rollback + kırmızı ⚠️ toast + hata logu.
+
+
+Kabul Kriterleri
+
+[ ] Aynı karta paralel iki finish/merge/split denemesi tekine düşer; diğerleri 409.
+
+[ ] Server zamanına göre endHHMM hesapları tutarlı; drift testi sıfır fark.
+
+[ ] Olay sırası korunur; out-of-order paketler reddedilir veya kuyruğa alınır.
+
+
+
+---
+
+39) Veri Koruma, Gizlilik & Denetim
+
+39.1 PII Koruması
+
+Çocuk/ebeveyn isimleri ve telefon at-rest şifreli; aktarımda TLS.
+
+Telefon maskeli görüntülenir; yetkisiz rolde tam numara gösterilmez.
+
+
+39.2 Denetim İzi (Audit)
+
+Tüm mutasyonlar session_events tablosuna (Madde 36.3) staffId, ip, userAgent, ts ile yazılır.
+
+Audit logları salt okunur, ayrı depoda (WORM benzeri).
+
+
+39.3 Saklama & Silme
+
+Oturum verisi saklama süresi (örn. 90 gün) yapılandırılabilir; süre dolunca anonimleştirme.
+
+Export/erase talepleri için uç noktalar (yasal gereksinimlerde).
+
+
+39.4 Günlükleme & Gizlilik
+
+Hata loglarında PII yok; korelasyon için anonim cardId/kidSeq yeterli.
+
+Geliştirme/QA ortamlarında gerçek PII asla kullanılmaz.
+
+
+Kabul Kriterleri
+
+[ ] PII alanları şifreli; yetkisiz rolde maskeleme.
+
+[ ] Audit kayıtları tüm mutasyonları içerir; değiştirilemez.
+
+[ ] Loglarda PII sızıntısı yok; otomatik testle doğrulanır.
+
+
+
+---
+
+40) Dayanıklılık, Performans & Gözlemlenebilirlik
+
+40.1 Tutarlılık & Eşzamanlılık
+
+İstemci çevrimdışı/yeniden bağlanınca: shell reconcile yapar, kartlar son duruma hydrate edilir.
+
+Merge/Split sırasında grid sıralama freeze; işlem bitince tek batch ile yeniden sıralama (Madde 26 ile uyum).
+
+
+40.2 İyileşme & Hata Toleransı
+
+Ağ hatalarında retry with backoff (yalnız idempotent uçlar).
+
+Feature flag: saniye şeridi/tilt/auto-scroll gibi görsel özellikler bozulma durumunda kapatılabilir.
+
+
+40.3 İzleme & Uyarı
+
+Telemetri: FPS düşüşleri (tilt/drag), event hata oranı, 95p işlem süresi.
+
+Uyarı eşikleri: finish/merge/split hata oranı >%1 → alarm.
+
+
+40.4 Performans Sınırları
+
+İlk render ≤100 ms/kart; yeniden sıralama patch’i ≤16 ms/frame.
+
+Virtual list zorunlu (≥50 kart). Ölçüm sonuçları konsola değil metrik altyapısına.
+
+
+Kabul Kriterleri
+
+[ ] Yeniden bağlanmada state uyumu bozulmaz (reconcile testleri).
+
+[ ] Idempotent retry tekrarlı yan etki üretmez.
+
+[ ] İzleme panellerinde FPS, hata oranı, gecikmeler görsellenir.
+
+41) Veri Kalıcılığı & Backend Entegrasyonu (ZORUNLU)
+
+Amaç: Kart kapanışı ve diğer olaylarda oturum verisinin kalıcı olarak backend’e yazılması; Ödeme Al ve raporlama ekranlarının bu veriyi bağımsız şekilde API’den okuması.
+
+41.1 Olay Tetikleri (Kart → Backend)
+Aşağıdaki kart olaylarında backend’e idempotent çağrı yapılır (Idempotency-Key zorunlu):
+
+card:extend → POST /api/v1/sessions/{sessionId}/extensions
+
+card:undo → POST /api/v1/sessions/{sessionId}/undos
+
+card:pause / card:resume → POST /api/v1/sessions/{sessionId}/state
+
+card:finish (Zorunlu) → POST /api/v1/sessions/{sessionId}/finish
+
+41.2 Snapshot Kaydı (Finish Anı – ZORUNLU)
+card:finish tetiklenince aşağıdaki snapshot JSON’ı backend’e gönderilir ve veritabanına yazılır:
+
+{
+  "sessionId": "sess_9f2c…",
+  "kidSeq": 17,
+  "child": {"first":"Ali","last":"Demir"},
+  "parent": {"first":"Ayşe","last":"Demir","phone":"+90…"},
+  "startAt": "2025-10-02T14:12:00Z",
+  "endAt": "2025-10-02T15:07:00Z",
+  "leftMin": 0,
+  "durationMin": 55,
+  "status": "finished_unpaid",
+  "lineItems": [{"area":"Top Havuzu","min":25},{"area":"Kum Havuzu","min":30}],
+  "log": [
+    {"t":"2025-10-02T14:37:12Z","type":"extend","data":{"min":15}},
+    {"t":"2025-10-02T14:41:03Z","type":"undo","data":{"min":15}}
+  ],
+  "mergeInfo": {
+    "mergeGroupId": null,                // veya "mg_abc…"
+    "mergedChildIds": []                 // veya ["kid_002"]
+  },
+  "pricing": {
+    "tariffId":"t_parkur_v1",
+    "calcVersion":"v2025.10",
+    "estimatedTotal": 0                  // hesap ödeme ekranda yapılabilir
+  },
+  "idempotencyKey": "finish-sess_9f2c-1696265220"
+}
+
+
+41.3 Okuma Sözleşmeleri (Ekranlar → Backend)
+
+Ödeme Al ekranı açılırken:
+GET /api/v1/sessions?status=finished_unpaid (liste) veya
+GET /api/v1/sessions/{sessionId} (tekil).
+
+Ana Sayfa / Raporlama:
+GET /api/v1/reports/daily?date=YYYY-MM-DD
+GET /api/v1/metrics?from=…&to=…
+
+41.4 Veri Modeli (DB – Özet)
+
+sessions(id, kid_seq, child, parent, start_at, end_at, status, merge_group_id, created_by, updated_by)
+
+session_events(id, session_id, t, type, payload_json, idempotency_key, created_at)
+
+session_lines(id, session_id, area, minutes)
+
+payments(id, session_id, method, amount, currency, status, created_at)
+
+“Session ID tahmin edilemez olmalı (UUIDv7 veya nanoid önerilir).”
+
+41.5 Sayfalar Arası Bağımsızlık (Loosely Coupled)
+
+Kart ekranı, Ödeme Al ekranını doğrudan veri iletmez; yalnızca card:finish sonrası URL yönlendirmesi yapabilir (isteğe bağlı).
+
+Ödeme Al ekranı kendi GET çağrısıyla veriyi backend’den çeker.
+
+Ana Sayfa/özet/raporlamalar da aynı kaynaktan okur (tek kaynaklı doğruluk).
+
+41.6 Güvenlik & Dayanıklılık
+
+Auth: OAuth2/JWT (Bearer) zorunlu.
+
+Idempotency: Tüm yazma çağrılarında Idempotency-Key header’ı.
+
+Outbox/Retry: Ağ hatasında kuyrukta sakla, en az bir kez teslim (at-least-once).
+
+Saat standardı: Tüm timestamp’ler UTC ISO-8601.
+
+“Tüm API çağrıları TLS 1.2+ zorunlu; backend ile iletişimde HSTS aktif.”
+
+“JWT refresh token’ı 24h; access token maks 15 dk; sliding refresh modeli uygulanmalı.”
+
+“KidSeq yalnız UI etiketi olarak kullanılır; API/URL kimliklendirmesinde tek başına kullanılamaz; kimliklendirme için sessionId zorunludur.”
+
+41.7 Kabul Kriterleri
+
+card:finish sonrası session DB’de finished_unpaid statüsüne düşer.
+
+Ödeme Al ekranı bu oturumu API’den görür ve açar.
+
+Aynı finish çağrısı tekrar gelse, idempotent davranışla aynı kayıt döner, çift yazım olmaz.
+
+42) Ödeme Al Ekranı – Veri Tüketimi & Sonuç Yazımı
+
+42.1 Girdi (Read):
+
+GET /api/v1/sessions/{sessionId} → Snapshot + lineItems + mergeInfo.
+
+Tarifeye göre ücret hesaplama ekran tarafında veya POST /pricing/quote ile backend’de yapılabilir.
+
+
+
+42.2 Çıktı (Write):
+
+Ödeme onayı: POST /api/v1/payments
+
+{"sessionId":"sess_9f2c…","method":"cash|card|qr","amount": 240.00,"currency":"TRY"}
+
+
+Başarılı ödeme sonrası session güncelle:
+
+POST /api/v1/sessions/{sessionId}/close → status = closed_paid.
+
+POS entegrasyonunda PCI DSS uyumluluğu; kart bilgisi uygulama tarafında tutulmaz.
+
+Ödeme çağrıları için de Idempotency-Key zorunlu; çifte tahsilat önlenir.
+
+42.3 Sonuçların Raporlamaya Yazılması
+
+Payment ve closed_paid olayları event-sourcing ile session_events tablosuna da düşülür (raporlar aynı kaynaktan beslenir).
+
+42.4 Kabul Kriterleri
+
+Ödeme Al sayfası yalnız API’den okur/yazar; kart ekranı ile bağlantısız çalışır.
+
+Ödeme tamamlanınca ana sayfa metrikleri yenilemede güncellenir (polling veya WS).
+
+Ödeme çağrıları için de Idempotency-Key zorunlu; çifte tahsilat önlenir.
+
+43) Ebeveyn Portalı / QR & Süre Uzatma (Backend Üzerinden)
+
+43.1 Akış
+
+Masada QR → kidSeq + sessionId’li URL.
+
+Ebeveyn mobil sayfası: POST /api/v1/sessions/{id}/extensions (auth kısa ömürlü token).
+
+Kart ekranı bu uzatmayı WS/Server-Sent Events ile canlı alır ve ring/log’u günceller.
+
+43.2 Güvenlik
+
+QR token’ı tek oturum ve süreli (ör. 30 dk).
+
+Uzatma limitleri (dakika, frekans) backend politika konfigürasyonundan.
+
+QR token minimum 128-bit entropy; Base32/QR içine gömülürken salt + signature (HMAC-SHA256) ile imzalanmalı.
+
+Token sızıntısında replay’i engellemek için one-time-use + TTL.
+
+43.3 Kabul Kriterleri
+
+Mobilde yapılan uzatma 1 sn içinde kartta görünür.
+
+Yetkisiz/expired token ile istek reddedilir (401/403).
+
+Ebeveyn API çağrıları sadece extensions endpointine izinli; pause/resume/finish erişimi olmaz.
+
+44) Oyunlar Sayfası – “Yeni Giriş” Akışı (Ultra Detay)
+
+44.1 Amaç
+Tek sayfa içinde yeni çocuk/ebeveyn kaydı alıp “Oyunu Başlat” ile anında kart oluşturmak; backend’e kalıcı session yaratmak.
+
+44.2 Form Alanları (Zorunluluk & Doğrulama)
+
+Çocuk: ad (zorunlu), soyad (opsiyon), cinsiyet (opsiyon: m/f/diğer).
+
+Ebeveyn: ad (zorunlu), soyad (opsiyon), telefon (zorunlu, E.164 +90… doğrulama).
+
+Parkur/Alan seçimi: çoklu seçim (Top Havuzu, Kum Havuzu, …), en az 1.
+
+Başlangıç süresi: dakika (zorunlu, min=5, max=180).
+
+Not: serbest metin (opsiyon, 240 karakter limit).
+
+KVKK onayı/aydınlatma: checkbox (zorunlu, metin linki).
+
+Hata mesajları: alan altında, kısa/net; form üstünde genel hata yoksa gösterilmez.
+
+
+44.3 UI Davranışı
+
+“Oyunu Başlat” aktiflik kuralı: tüm zorunlu alanlar geçerli + KVKK onaylı.
+
+Basıldığında: buton loading (spinner) + form disable; çift tıklama kilidi.
+
+Başarılı: kart grid’inde yepyeni kart fade-in ile belirir; form temizlenir.
+
+Başarısız: alan bazlı hata + kırmızı toast (“Kayıt oluşturulamadı”).
+
+
+44.4 Backend Çağrısı (Create Session)
+
+POST /api/v1/sessions
+
+{
+  "child": {"first":"Ali","last":"Demir","gender":"m"},
+  "parent": {"first":"Ayşe","last":"Demir","phone":"+9053..."},
+  "areas": ["Top Havuzu","Kum Havuzu"],
+  "initialMinutes": 45,
+  "notes": "Doğum günü grubuyla geldi",
+  "source": "kiosk|desk|mobile",
+  "idempotencyKey": "new-<uuidv7>"
+}
+
+Yanıt: 201 + {sessionId, kidSeq, startAt, endAt, status:"active"}
+
+Not: Idempotency-Key zorunlu; ağ hatasında güvenli tekrar.
+
+
+44.5 Kartın Açılması
+
+UI, yanıt dönünce 17. maddedeki CardState şemasına uygun başlangıç state’i oluşturur.
+
+kidSeq UI rozeti (madde 14) ile uyumlu.
+
+
+44.6 Erişilebilirlik
+
+Form odak sırası mantıklı; hatada ilk problemli alana odak.
+
+Yardım metinleri aria-describedby ile bağlanır.
+
+“Oyunu Başlat” butonu aria-busy loading’de true.
+
+
+44.7 Kabul Kriterleri
+
+Geçerli form → tek bir session yaratılır (çift tıklamada da tek).
+
+Yeni kart 300 ms içinde görünür; state doğru doldurulur.
+
+Hatalar alan altında gösterilir; toast metni ve log uyumlu.
+
+
+44.8 Yapılandırma (Config)
+
+NEW_MIN_MINUTES = 5
+NEW_MAX_MINUTES = 180
+IDEMPOTENCY_PREFIX = "new-"
+FORM_DEBOUNCE_MS = 300
+
+
+---
+
+45) Üst Bar / Personel & Oturum Bilgisi (Ultra Detay)
+
+45.1 Amaç
+Sağ üstte aktif personel, şube ve vardiya durumunu görünür kılmak; işlem izlenebilirliğini artırmak.
+
+45.2 İçerik
+
+Personel adı + kısa rol rozeti (örn. “Merve — Kassam”).
+
+Şube/masraf merkezi (örn. “Caddebostan Şube”).
+
+Vardiya sayacı (örn. “Vardiya: 02:13”).
+
+Hızlı eylemler: “Yeni Giriş”, “Raporlar”, “Ayarlar” (opsiyon).
+
+Çıkış (Logout) ve profil menüsü.
+
+
+45.3 Veri & Güvenlik
+
+Kimlik: JWT’den user.name, role, branch okunur.
+
+Kalp atışı: 60 sn’de bir presence ping (opsiyon).
+
+Gizlilik: Ebeveyn ad/telefonu üst barda gösterilmez.
+
+
+45.4 UI Davranışı
+
+Rol rozeti rengine göre (admin/kasa/operasyon) sınıf ataması.
+
+Offline modu: Token yenileme hatasında kırmızı “Bağlantı koptu” bandı.
+
+Çoklu oturum uyarısı (opsiyon): Başka cihazda login → sarı banner.
+
+
+45.5 Kabul Kriterleri
+
+Personel adı/rol/şube doğru; logout anında kimliklenmiş çağrılar durur.
+
+Offline/online bantları doğru tetiklenir.
+
+Üst bardan “Yeni Giriş” → 44. maddedeki modül odaklanır.
+
+
+45.6 Yapılandırma (Config)
+
+PRESENCE_PING_SEC = 60
+ROLE_COLORS = { admin:'#0ea5e9', cashier:'#22c55e', ops:'#a78bfa' }
+
+
+---
+
+46) Uygulama Bütünlüğü, Yetkilendirme & Gözlemlenebilirlik (Ultra Detay)
+
+46.1 Yetkilendirme (RBAC)
+
+Roller: admin, cashier, ops, viewer.
+
+Erişim örnekleri:
+
+cashier: session create/finish, payments create, read reports (özet).
+
+ops: session create/extend/pause/resume, no payments.
+
+viewer: yalnız read.
+
+
+Tüm yazma çağrıları: JWT + role kontrolü; denetim logu.
+
+
+46.2 Denetim & Log
+
+Her POST/PATCH → audit_log kaydı: {userId, action, targetId, ts, ip, ua}.
+
+PII maskeleme: Telefonların son 2 hanesi hariç maskeli gösterim UI’de; log’ta tam değer sadece backend güvenli alanlarında tutulur.
+
+
+46.3 Hata Yönetimi
+
+İstemciye: RFC7807 problemi (application/problem+json)
+
+type, title, status, detail, traceId
+
+
+UI: Kırmızı toast + sorun kimliği (traceId), tekrar dene/iletişim.
+
+
+46.4 Oran Sınırlama & İstikrar
+
+Rate limit: POST /sessions 10/dk/kullanıcı, POST /payments 6/dk/kasa.
+
+Idempotency zorunlu alanlar: 41–42’deki tüm yazma uçları.
+
+Outbox + retry politikası (en az bir kez teslim), deduplikasyon idempotency ile.
+
+
+46.5 Zaman & Saat Dilimi
+
+Depoda tüm timestamp’ler UTC; UI yerel saat gösterir.
+
+Saat kaydırma → startHHMM/endHHMM UI’da lokal sunum; backend ISO-8601Z.
+
+
+46.6 Telemetri & Metrikler
+
+Ön uç: Web-vitals (LCP, INP), hata oranı, WS bağ sayısı.
+
+Arka uç: Çağrı süreleri, 2xx/4xx/5xx oranları, retry sayıları, idempotency hit.
+
+Dashboard: “Aktif kart sayısı”, “Kritik (≤5dk) kart sayısı”, “Günlük finish”, “Günlük tahsilat”.
+
+
+46.7 Kabul Kriterleri
+
+Rolü olmayan kullanıcı yazma yapamaz; hata 403.
+
+Tüm yazma işlemlerinde audit kaydı oluşur; traceId UI’dan görülebilir.
+
+Rate-limit aşımında 429 + yeniden dene başlığı döner.
+
+Telemetri panosunda temel metrikler canlı akar.
+
+
+47) Personel Yönetimi (Ayarlar > Personeller) – Admin CRUD (Ultra Detay)
+
+47.1 Amaç
+Yönetici tarafından personel ekleme/silme/düzenleme, rol atama, PIN belirleme ve durum yönetimi (aktif/pasif).
+
+47.2 Veri Modeli (Özet)
+
+users(id, first_name, last_name, role, phone, email, status, branch_id, created_at, updated_at)
+
+user_auth(id, user_id, pin_hash, pin_updated_at, last_login_at, failed_pin_count, locked_until)
+
+roles(id, code, name) → admin|cashier|ops|viewer (46.1 ile aynı hiyerarşi)
+
+
+47.3 UI – Personeller Listesi
+
+Sütunlar: Ad Soyad, Rol, Durum (Aktif/Pasif), Son Giriş, Şube, İşlemler (Düzenle/Sil/Sıfırla PIN).
+
+Arama/filtre: ad/rol/şube/durum.
+
+“+ Personel Ekle” butonu.
+
+
+47.4 UI – Ekle/Düzenle
+
+Alanlar: Ad, Soyad (zorunlu); Rol (zorunlu); Şube (zorunlu); Telefon/E-posta (opsiyon); Durum (varsayılan Aktif).
+
+PIN oluşturma:
+
+Yönetici “PIN oluştur” der → 4–6 haneli, yalnız rakam (regex: ^[0-9]{4,6}$).
+
+PIN UI’da tam gösterilmez; yalnız bir defaya mahsus “göster” seçeneği ile maskeli-göster.
+
+Kaydederken backend’e hash (Argon2id veya bcrypt cost≥12) gönderilir; düz PIN asla log’lanmaz/saklanmaz.
+
+
+
+47.5 Silme / Pasif Etme
+
+Silme yerine pasif önerilir (status=inactive).
+
+Pasif kullanıcı login olamaz; var olan token’ları revoke edilir.
+
+
+47.6 Güvenlik
+
+PIN hatası sayacı: failed_pin_count 5’e ulaşırsa locked_until = now + 15 dk.
+
+Rate limit: PIN doğrulama 10/dk/kaynak IP.
+
+PIN rotasyonu: admin zorunlu kılabilir (örn. 90 günde bir).
+
+Tüm değişiklikler audit log (46.2) ile kayıt altına alınır.
+
+
+47.7 Backend API
+
+GET /api/v1/users?role=&status=&q= (admin)
+
+POST /api/v1/users (admin)
+
+PATCH /api/v1/users/{id} (admin)
+
+POST /api/v1/users/{id}/pin (admin, body: {pin: "1234"} → hash’lenir)
+
+POST /api/v1/users/{id}/status (activate/deactivate)
+
+
+47.8 Kabul Kriterleri
+
+PIN hiçbir zaman düz metin olarak depolanmaz/log’lanmaz.
+
+Hatalı PIN’de sayaç artar, limitte kilitlenir.
+
+Rol/durum değişikliği anında etkili; pasif kullanıcı token’ları geçersizleşir.
+
+
+47.9 Yapılandırma (Config)
+
+PIN_LENGTH_MIN = 4
+PIN_LENGTH_MAX = 6
+PIN_HASH_ALGO = "argon2id"   // fallback: bcrypt cost≥12
+PIN_FAIL_LOCK_THRESHOLD = 5
+PIN_LOCK_MINUTES = 15
+PIN_ROTATE_DAYS = 90
+PIN_VERIFY_RATE_LIMIT = "10/min/ip"
+
+
+---
+
+48) PIN ile Giriş (Login), Oturum & Kilitleme (Ultra Detay)
+
+48.1 Amaç
+Kasada hızlı giriş için PIN login, masa üstü uygulamada ekran kilidi ve güvenli çıkış.
+
+48.2 Akışlar
+
+Login (PIN):
+
+Ekran: Kullanıcı seçimi (liste/arama) + PIN alanı (password mask).
+
+POST /api/v1/auth/pin → başarılıysa access_token (≤15 dk) + refresh_token (≤24 saat) + user payload.
+
+Başarısız: sayaç artar, hata mesajı “Geçersiz PIN”. Limitte kilit.
+
+
+Ekran kilidi:
+
+İnaktiflik (örn. 5 dk) → “Kilitli” overlay; PIN ister.
+
+Kilit açılınca aynı kullanıcı devam eder (token geçerli ise); değilse re-auth.
+
+
+Çıkış:
+
+“Çıkış” → POST /api/v1/auth/logout (refresh revoke) + local storage temizliği.
+
+
+
+48.3 UI
+
+PIN alanı numeric keypad (dokunmatik).
+
+Hata geri bildirimi gecikmesiz; lock durumunda “Şu saate kadar kilitli”.
+
+Çoklu cihaz uyarısı (opsiyon): aynı kullanıcı farklı cihazda login → sarı banner.
+
+
+48.4 Güvenlik
+
+Tüm çağrılar TLS, HSTS (41.6).
+
+Token yenileme sessiz (silent refresh) ama başarısızsa kırmızı “Bağlantı koptu” bandı (45.4 ile tutarlı).
+
+PIN hiçbir zaman ağ üzerinden log’lanmaz.
+
+
+48.5 Kabul Kriterleri
+
+Başarılı PIN login → 1 sn içinde üst barda (45) personel adı/rol görünür.
+
+İnaktiflikte kilit; doğru PIN ile sorunsuz açılır.
+
+Kilit/çıkış sonrası korumalı ekranlara erişim 401/redirect ile engellenir.
+
+
+48.6 Yapılandırma (Config)
+
+ACCESS_TOKEN_TTL_MIN = 15
+REFRESH_TOKEN_TTL_HR = 24
+IDLE_LOCK_MIN = 5
+
+
+---
+
+49) İşlem Atfı (staffId) – Kart Olayları & Kafe Masaları (Ultra Detay)
+
+49.1 Amaç
+Tüm operasyonel işlemlerin yapan personel ile kalıcı olarak ilişkilendirilmesi; audit ve raporlamada netlik.
+
+49.2 Kapsam
+
+Kart olayları: create (Yeni Giriş), extend, undo, pause, resume, finish, split/merge…
+
+Kafe masaları (gelecek modül): masa aç/kapat, ürün ekle/çıkar, iskonto, tahsil.
+
+
+49.3 Taşıma Kuralı
+
+Ön uç, tüm yazma çağrılarına JWT’den gelen userId’i header ve/veya body’de iletir.
+
+Header: X-Staff-Id: {userId}
+
+Body örn.: {..., "staffId":"u_123"}
+
+
+Backend, kimliği token’dan doğrular, header/body uyuşmazlığı varsa token’ı esas alır.
+
+
+49.4 Kaydetme
+
+session_events.staff_id doldurulur (41.4).
+
+payments.staff_id doldurulur (42.2).
+
+audit_log.user_id zaten zorunlu (46.2).
+
+
+49.5 UI Yansımaları
+
+Detay Paneli Log (15. madde ile uyum): her satırın tooltip’inde “İşlemi yapan: Ad Soyad (Rol)” info’su (isteğe bağlı).
+
+Raporlar: Personel kırılımında “Günlük uzatma sayısı”, “Bitir sayısı”, “Tahsilat toplamı”.
+
+
+49.6 Çakışma/Devralma
+
+Devir (shift change): Yeni kullanıcı login olursa yeni işlemler yeni staffId ile yazılır; önceki açık kartlar eski staffId’yi korur (işlem bazlı atıf).
+
+İmza devri yoktur (başkasının yaptığı işlem başka kullanıcıya taşınmaz).
+
+
+49.7 Kabul Kriterleri
+
+Tüm POST/PATCH çağrılarında staffId backende taşınır ve kayda geçer.
+
+Raporlarda personel bazlı kırılımlar doğru çıkar.
+
+Detay paneli tooltip’leri (varsa) doğru personeli gösterir.
+
+
+49.8 Yapılandırma (Config)
+
+STAFF_HEADER = "X-Staff-Id"
+DETAIL_LOG_SHOW_STAFF_TOOLTIP = true
+
+
+50) Tarife Modeli & Hesaplama (Dakika Bazlı, Versiyonlu – ZORUNLU)
+
+Amaç: Dakika bazlı ücretlendirme modelini, yuvarlama kurallarını ve hesaplama akışını tanımlar. Tüm tutar hesapları backend’de yapılır; frontend yalnız süre/kalem (line item) gönderir.
+
+50.1 Temel Model (Dakika × Birim Fiyat)
+Formül (basit): tutar = billableMin × unitPrice
+billableMin dakika bazlı yuvarlama sonrası faturalandırılacak dakika.
+Saatlik model yoktur. Sadece dakika bazlıdır.
+
+50.2 Yuvarlama & Alt/Üst Limitler
+
+STEP_MIN: Faturalama adımı (dk). Varsayılan: 1 (dakikası dakikasına).
+
+ROUNDING_MODE: ceil | floor | nearest (0.5 up). Önerilen: ceil (yukarı).
+
+GRACE_FREE_MIN: Ücretsiz tolerans (örn. 0).
+
+MIN_CHARGE_MIN: Minimum ücretlenecek dakika (örn. 5).
+
+MAX_CHARGE_MIN: Opsiyonel üst sınır (örn. null).
+
+
+billableMin hesabı:
+
+rawMin = toplamDakika
+effMin = max(0, rawMin - GRACE_FREE_MIN)
+stepMin = apply_rounding(effMin, STEP_MIN, ROUNDING_MODE)
+billableMin = max(stepMin, MIN_CHARGE_MIN)
+if MAX_CHARGE_MIN != null → billableMin = min(billableMin, MAX_CHARGE_MIN)
+
+50.3 Alan/Parkur Bazlı Fiyatlandırma (Opsiyonel)
+unitPrice global veya area (parkur) bazında belirlenebilir.
+Line item’lar: [{ area:"Trambolin", min:25 }, …]
+Hesap: her kalem kendi unitPrice ve yuvarlama kurallarıyla hesaplanır → sonra toplanır.
+
+50.4 Vergi/İndirim (Opsiyonel)
+
+VAT_RATE (örn. %10) → vergi dâhil/dahil değil konfigüre edilebilir.
+
+discounts[] (kupon, kampanya, rol bazlı, sibling/çoklu çocuk indirimi vb.).
+
+İndirimler vergiden önce/sonra uygulanabilir.
+
+
+50.5 Versiyonlama
+Her tarife değişikliği tariffId ve calcVersion ile versiyonlanır.
+Kart bitişinde snapshot’a kullanılan calcVersion yazılır (bkz. Madde 33.2).
+
+50.6 Hesaplama Yeri
+ZORUNLU: Backend (tek kaynak).
+Endpoint: POST /api/v1/pricing/quote
+
+Input (ör.):
+
+{
+  "sessionId": "sess_9f2c",
+  "kidSeq": 17,
+  "lineItems": [
+    {"area": "Top Havuzu", "min": 25},
+    {"area": "Kum Havuzu", "min": 30}
+  ],
+  "tariffId": "t_parkur_v1"
+}
+
+Output (ör.):
+
+{
+  "calcVersion": "v2025.10",
+  "currency": "TRY",
+  "breakdown": [
+    {"area":"Top Havuzu","rawMin":25,"billableMin":25,"unitPrice":3.50,"subtotal":87.50},
+    {"area":"Kum Havuzu","rawMin":30,"billableMin":30,"unitPrice":3.50,"subtotal":105.00}
+  ],
+  "discounts":[{"code":"SIBLING10","amount":19.25}],
+  "vat":{"rate":0.10,"amount":17.33},
+  "total": 190.58
+}
+
+50.7 Hata & Offline Dayanıklılık
+Quote servisi yanıt vermezse Ödeme Al ekranında “Hesaplama hatası” kırmızı toast + retry.
+(Opsiyonel) Son başarılı yanıt cache’lenebilir, ama ödemeden önce mutlaka backend quote alınır.
+
+50.8 Güvenlik
+
+Tarife hesaplama endpoint’i JWT zorunlu.
+
+Idempotency-Key ödeme çağrılarında zorunlu (bkz. 34/Ek).
+
+RBAC: Tarife görme (staff), değiştirme (manager/admin).
+
+
+50.9 Kabul Kriterleri
+[ ] “Bitir” sonrası Ödeme Al ekranı backend’den quote alır.
+[ ] Yuvarlama/limitler doğru uygulanır.
+[ ] Snapshot’a tariffId + calcVersion yazılır.
+[ ] Frontend kendi başına tutar hesaplamaz.
+
+
+---
+
+51) Tarife Yapılandırması (Ayarlar UI + API – ZORUNLU)
+
+51.1 Yönetim UI (Park Menüsü > Ayarlar > Tarife)
+Alanlar:
+
+unitPrice (TRY/dk, ondalık),
+
+STEP_MIN, ROUNDING_MODE, GRACE_FREE_MIN, MIN_CHARGE_MIN, MAX_CHARGE_MIN|null,
+
+Area bazlı override tablosu,
+
+VAT_RATE, indirim kuralları.
+
+
+Kaydet → POST /api/v1/pricing/tariffs (yeni versiyon).
+Sadece manager/admin değiştirebilir (RBAC).
+
+51.2 API Sözleşmeleri
+
+Listele (aktif): GET /api/v1/pricing/tariffs?status=active
+
+Geçmiş: GET /api/v1/pricing/tariffs?status=archived
+
+Yayınla: POST /api/v1/pricing/tariffs/{id}/publish → calcVersion artar.
+
+
+51.3 Etkinleştirme Zamanlaması
+
+“Hemen” veya ileri tarihli yayın (effectiveFrom).
+
+Yeni oturumlar yeni tarife ile, açık oturumlar eski tarife ile kapanır.
+
+
+51.4 Kabul Kriterleri
+[ ] Tarife değişince versiyon artar, eski arşivlenir.
+[ ] UI’den yayınlanan tarife quote’da aynen kullanılır.
+[ ] RBAC ve doğrulama hataları kullanıcıya net iletilir.
+
+
+---
+
+52) Ödeme Al Ekranı – Tarife Breakdown & Quote Kullanımı
+
+52.1 UI
+“Hesap Detayı” bölümü: area bazında satırlar (rawMin, billableMin, unitPrice, subtotal), indirimler, KDV ve genel toplam.
+Tarife versiyonu küçük yazıyla: calcVersion v2025.10.
+
+52.2 Kenar Senaryoları
+
+Quote başarısız → Ödeme butonu pasif, yalnız Tekrar Dene aktif.
+
+Tarife değişti uyarısı (publish oldu) → otomatik yeniden quote.
+
+
+52.3 Kabul Kriterleri
+[ ] Ödeme ekranı toplamı yalnız backend quote’undan gösterir.
+[ ] Breakdown–toplam tutarlı; indirim/KDV doğru işler.
+[ ] Versiyon etiketi görünür; publish sonrası otomatik yenilenir.
+
+
+---
+
+53) Test Senaryoları & Doğrulama (Tarife)
+
+53.1 Yuvarlama
+
+STEP=1, ROUND=ceil → 37 dk = 37 dk.
+
+STEP=5, ROUND=ceil → 37 dk = 40 dk.
+
+GRACE=5 → 4 dk = 0 dk.
+
+MIN=15 → 7 dk → 15 dk.
+
+MAX=60 → 95 dk → 60 dk.
+
+
+53.2 Area Bazlı
+Trambolin 3.5/dk, Kum 2.0/dk → breakdown doğru.
+
+53.3 Versiyonlama
+Oturum eski versiyonla başladı, yeni yayınlandı → bitir’de eski kullanılır.
+
+53.4 Güvenlik
+Staff değiştiremez (403), manager değiştirir (200).
+TLS/HSTS, JWT, idempotency aktif.
+
+53.5 Dayanıklılık
+Quote time-out → retry, ödeme pasif.
+Publish anında ekran → auto-refresh quote.
+
+
+---
+
+54) Güvenlik & Uyum – Tarife ve Ödeme (Toplayıcı Başlık)
+
+54.1 İletişim & Kimlik
+
+Tüm pricing/ödemeler TLS 1.2+, HSTS.
+
+JWT access ≤15 dk, refresh ≤24h.
+
+Idempotency-Key tüm yazma çağrılarında.
+
+
+54.2 Kimlikleyiciler
+
+sessionId, kidSeq tahmin edilemez (UUIDv7/nanoid).
+
+Quote & payment çağrılarında staffId eklenir (audit).
+
+
+54.3 POS & Kart Verisi
+
+POS entegrasyonu PCI DSS uyumlu.
+
+Kart verisi uygulamada tutulmaz.
+
+RBAC: ödeme değişiklikleri cashier+.
+
+
+54.4 Ebeveyn Portalı (QR)
+
+Token ≥128-bit entropi, HMAC-SHA256 imzalı.
+
+TTL + one-time-use.
+
+Yalnız extensions endpoint; pause/resume/finish yok.
+
+
+54.5 Yetki (RBAC) & Log
+
+staff: normal, manager/admin: tarife yayınlama.
+
+Tüm fiyat/ödeme olayları session_events + audit log’a.
+
+
+54.6 Kabul Kriterleri
+[ ] Ödemeler idempotent.
+[ ] POS entegrasyonu PCI uyumlu.
+[ ] QR token’ları tek kullanımlık.
+[ ] RBAC + audit tüm kritik akışlarda çalışır.
