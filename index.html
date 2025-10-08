@@ -1,1 +1,1319 @@
+<!DOCTYPE html>
+<html lang="tr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Kafe Çocuk Parkı Süre Takip Paneli</title>
+    <style>
+      :root {
+        color-scheme: light;
+        font-family: "Inter", "Segoe UI", -apple-system, BlinkMacSystemFont, sans-serif;
+        --surface: rgba(15, 23, 42, 0.55);
+        --surface-strong: rgba(15, 23, 42, 0.7);
+        --border: rgba(148, 163, 184, 0.35);
+        --text-primary: #f8fafc;
+        --text-secondary: rgba(226, 232, 240, 0.8);
+        --gradient: radial-gradient(circle at 10% 20%, rgba(76, 29, 149, 0.72), rgba(37, 99, 235, 0.68) 40%, rgba(14, 116, 144, 0.6));
+        --ok: #16a34a;
+        --warn: #f59e0b;
+        --danger: #dc2626;
+        --paused: #2563eb;
+        --expired: #6b7280;
+        --radius-lg: 22px;
+        --radius-md: 16px;
+        --shadow-lg: 0 26px 46px rgba(15, 23, 42, 0.4);
+        --shadow-sm: 0 8px 18px rgba(15, 23, 42, 0.25);
+        --transition: 160ms ease;
+      }
 
+      @media (prefers-reduced-motion: reduce) {
+        :root {
+          --transition: 0ms;
+        }
+
+        *,
+        *::before,
+        *::after {
+          animation-duration: 1ms !important;
+          animation-iteration-count: 1 !important;
+          transition-duration: 0ms !important;
+          scroll-behavior: auto !important;
+        }
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        background: var(--gradient);
+        color: var(--text-primary);
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        padding: clamp(24px, 6vw, 48px) clamp(20px, 6vw, 60px) 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      header h1 {
+        font-size: clamp(28px, 4vw, 40px);
+        margin: 0;
+        font-weight: 800;
+        letter-spacing: -0.01em;
+      }
+
+      header p {
+        margin: 0;
+        max-width: 720px;
+        color: var(--text-secondary);
+        line-height: 1.5;
+      }
+
+      .layout {
+        flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, 380px) minmax(0, 1fr);
+        gap: clamp(20px, 5vw, 48px);
+        padding: 0 clamp(20px, 6vw, 60px) clamp(32px, 6vw, 60px);
+      }
+
+      @media (max-width: 1150px) {
+        .layout {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .column {
+        display: flex;
+        flex-direction: column;
+        gap: clamp(20px, 2vw, 28px);
+      }
+
+      .panel {
+        background: var(--surface);
+        backdrop-filter: blur(18px) saturate(140%);
+        border: 1px solid var(--border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--shadow-lg);
+        position: relative;
+        overflow: hidden;
+      }
+
+      .panel::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 1px 3px rgba(255, 255, 255, 0.2);
+        pointer-events: none;
+      }
+
+      .panel-header {
+        padding: 24px clamp(20px, 4vw, 32px) 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .panel-header h2 {
+        margin: 0;
+        font-size: 20px;
+      }
+
+      .panel-header p {
+        margin: 0;
+        color: var(--text-secondary);
+        font-size: 14px;
+        line-height: 1.4;
+      }
+
+      .panel-body {
+        padding: 0 clamp(20px, 4vw, 32px) clamp(20px, 4vw, 32px);
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+      }
+
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 18px;
+      }
+
+      .field {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      label {
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        font-size: 12px;
+        color: rgba(226, 232, 240, 0.7);
+      }
+
+      input,
+      select,
+      textarea {
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        background: rgba(15, 23, 42, 0.45);
+        color: var(--text-primary);
+        padding: 12px 16px;
+        font-size: 15px;
+        transition: border-color var(--transition), box-shadow var(--transition);
+      }
+
+      input:focus,
+      select:focus,
+      textarea:focus {
+        outline: none;
+        border-color: rgba(148, 163, 184, 0.8);
+        box-shadow: 0 0 0 3px rgba(148, 163, 184, 0.35);
+      }
+
+      .form-footer {
+        display: flex;
+        gap: 12px;
+        flex-wrap: wrap;
+      }
+
+      button {
+        border: none;
+        border-radius: 999px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: transform var(--transition), box-shadow var(--transition);
+      }
+
+      .btn-primary {
+        padding: 12px 20px;
+        background: linear-gradient(135deg, #22d3ee, #6366f1);
+        color: #0f172a;
+        box-shadow: var(--shadow-sm);
+      }
+
+      .btn-secondary {
+        padding: 10px 18px;
+        background: rgba(148, 163, 184, 0.2);
+        color: var(--text-primary);
+      }
+
+      .btn-critical {
+        padding: 10px 18px;
+        background: rgba(220, 38, 38, 0.15);
+        color: #fecaca;
+      }
+
+      button:disabled {
+        cursor: not-allowed;
+        opacity: 0.6;
+        box-shadow: none;
+      }
+
+      button:not(:disabled):hover {
+        transform: translateY(-1px);
+      }
+
+      .session-list {
+        display: grid;
+        gap: 16px;
+      }
+
+      .session-card {
+        display: grid;
+        grid-template-columns: 120px minmax(0, 1fr);
+        gap: 20px;
+        padding: 24px;
+        border-radius: var(--radius-lg);
+        background: var(--surface-strong);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        box-shadow: var(--shadow-sm);
+      }
+
+      @media (max-width: 640px) {
+        .session-card {
+          grid-template-columns: minmax(0, 1fr);
+        }
+      }
+
+      .progress-ring {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        background: conic-gradient(#22d3ee 0deg, rgba(255, 255, 255, 0.1) 0deg);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+
+      .progress-ring::after {
+        content: "";
+        position: absolute;
+        inset: 14px;
+        border-radius: 50%;
+        background: rgba(15, 23, 42, 0.8);
+      }
+
+      .progress-time {
+        position: relative;
+        font-size: 16px;
+        font-weight: 700;
+      }
+
+      .session-meta {
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .session-meta h3 {
+        margin: 0;
+        font-size: 18px;
+      }
+
+      .meta-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+        gap: 10px;
+      }
+
+      .meta-item {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .meta-label {
+        font-size: 12px;
+        letter-spacing: 0.08em;
+        color: rgba(226, 232, 240, 0.6);
+        text-transform: uppercase;
+      }
+
+      .meta-value {
+        font-size: 14px;
+        color: var(--text-primary);
+      }
+
+      .tags {
+        display: flex;
+        gap: 8px;
+        flex-wrap: wrap;
+      }
+
+      .tag {
+        padding: 6px 12px;
+        border-radius: 999px;
+        font-size: 12px;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        background: rgba(148, 163, 184, 0.18);
+      }
+
+      .tag.ok {
+        background: rgba(34, 197, 94, 0.2);
+        color: #bbf7d0;
+      }
+
+      .tag.warn {
+        background: rgba(245, 158, 11, 0.2);
+        color: #fde68a;
+      }
+
+      .tag.danger {
+        background: rgba(220, 38, 38, 0.2);
+        color: #fecaca;
+      }
+
+      .tag.paused {
+        background: rgba(37, 99, 235, 0.25);
+        color: #bfdbfe;
+      }
+
+      .controls {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+
+      .controls button {
+        flex: 1 1 140px;
+      }
+
+      .status-dot {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        display: inline-block;
+        margin-right: 6px;
+      }
+
+      .audit-log {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+
+      .audit-entry {
+        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(148, 163, 184, 0.25);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .audit-entry .title {
+        font-size: 14px;
+        font-weight: 600;
+      }
+
+      .audit-entry .meta {
+        font-size: 12px;
+        color: var(--text-secondary);
+      }
+
+      .spec-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 12px;
+      }
+
+      .spec-item {
+        padding: 12px 16px;
+        border-radius: var(--radius-md);
+        background: rgba(255, 255, 255, 0.08);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .spec-item strong {
+        font-size: 13px;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+      }
+
+      .payment-breakdown {
+        display: grid;
+        gap: 12px;
+      }
+
+      .breakdown-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 14px;
+        background: rgba(15, 23, 42, 0.65);
+        border-radius: var(--radius-md);
+        overflow: hidden;
+      }
+
+      .breakdown-table thead {
+        background: rgba(148, 163, 184, 0.1);
+      }
+
+      .breakdown-table th,
+      .breakdown-table td {
+        padding: 10px 14px;
+        text-align: left;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
+      .breakdown-table tbody tr:last-child td {
+        border-bottom: none;
+      }
+
+      .payment-total {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 700;
+        font-size: 18px;
+        padding: 12px 16px;
+        background: rgba(34, 197, 94, 0.18);
+        border-radius: var(--radius-md);
+      }
+
+      .qr-list {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .qr-item {
+        padding: 12px 14px;
+        border-radius: var(--radius-md);
+        border: 1px dashed rgba(148, 163, 184, 0.45);
+        background: rgba(15, 23, 42, 0.55);
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+      }
+
+      .toast-region {
+        position: fixed;
+        top: 24px;
+        right: 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+        z-index: 10;
+      }
+
+      .toast {
+        background: rgba(15, 23, 42, 0.9);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        border-radius: var(--radius-md);
+        padding: 12px 16px;
+        min-width: 220px;
+        box-shadow: var(--shadow-sm);
+        font-size: 14px;
+      }
+
+      .toast.ok {
+        border-color: rgba(34, 197, 94, 0.5);
+      }
+
+      .toast.warn {
+        border-color: rgba(245, 158, 11, 0.5);
+      }
+
+      .legend {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 12px;
+        font-size: 13px;
+        color: var(--text-secondary);
+      }
+
+      .legend span {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      .pill {
+        padding: 4px 10px;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.2);
+        font-size: 12px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>Kafe Çocuk Parkı Süre Takip Paneli</h1>
+      <p>
+        Bu panel, çocuk oyun alanındaki oturumları canlı olarak izlemek, güvenlik ve yetki
+        gereksinimlerine uymak, tarife sürümlerini yönetmek ve ödeme öncesi hesaplamaları
+        şeffaf biçimde göstermek için hazırlanmıştır. Tüm akışlar Madde 37-54
+        şartnamesindeki RBAC, idempotency ve denetim kriterleriyle hizalanmıştır.
+      </p>
+    </header>
+
+    <main class="layout">
+      <section class="column">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Yeni Oturum Oluştur</h2>
+            <p>
+              Oturum başlatıldığında kidId tekil olarak atanır, idempotency anahtarı ve rol
+              yetkileri ile audit kaydı açılır. Telefon numarası rolüne göre maskelenir.
+            </p>
+          </div>
+          <div class="panel-body">
+            <form id="sessionForm">
+              <div class="field">
+                <label for="kidName">Çocuk Adı</label>
+                <input id="kidName" name="kidName" maxlength="40" required autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="parentName">Ebeveyn Adı</label>
+                <input id="parentName" name="parentName" maxlength="60" required autocomplete="off" />
+              </div>
+              <div class="field">
+                <label for="parentPhone">Ebeveyn Telefon</label>
+                <input
+                  id="parentPhone"
+                  name="parentPhone"
+                  type="tel"
+                  pattern="[0-9+() ]{8,20}"
+                  required
+                  autocomplete="off"
+                  placeholder="05xx xxx xx xx"
+                />
+              </div>
+              <div class="field">
+                <label for="area">Oyun Alanı</label>
+                <select id="area" name="area" required>
+                  <option value="Trambolin">Trambolin (3.5 ₺/dk)</option>
+                  <option value="Kum Parkı">Kum Parkı (2.0 ₺/dk)</option>
+                  <option value="Top Havuzu">Top Havuzu (2.8 ₺/dk)</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="duration">Planlanan Süre</label>
+                <select id="duration" name="duration" required>
+                  <option value="30">30 dk (MIN=15 | MAX=120)</option>
+                  <option value="45">45 dk</option>
+                  <option value="60">60 dk</option>
+                  <option value="75">75 dk</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="notes">Notlar (opsiyonel)</label>
+                <textarea id="notes" name="notes" rows="3" maxlength="160" placeholder="Allerji, teslim eden kişi vb."></textarea>
+              </div>
+              <div class="form-footer">
+                <button type="submit" class="btn-primary">Oturumu Başlat</button>
+                <button type="reset" class="btn-secondary">Formu Temizle</button>
+              </div>
+            </form>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Rol & Güvenlik Kontrolleri</h2>
+            <p>
+              RBAC matrisi Madde 37 ile uyumlu. Rol değiştirdiğinizde buton izinleri,
+              telefon maskelemesi ve QR token üretimi otomatik güncellenir.
+            </p>
+          </div>
+          <div class="panel-body">
+            <div class="field">
+              <label for="roleSelect">Aktif Rol</label>
+              <select id="roleSelect" aria-describedby="roleHint">
+                <option value="staff">Staff</option>
+                <option value="manager">Manager</option>
+                <option value="cashier">Cashier</option>
+              </select>
+              <small id="roleHint" style="color: var(--text-secondary); font-size: 13px;">
+                Staff: temel uzatma/duraklatma. Manager: tüm mutasyonlar + tarife yayınlama.
+                Cashier: ödeme ve sonlandırma.
+              </small>
+            </div>
+            <div class="spec-grid">
+              <div class="spec-item">
+                <strong>Idempotency</strong>
+                <span>Her mutasyon için UUIDv7 anahtar üretip günlükte saklıyoruz.</span>
+              </div>
+              <div class="spec-item">
+                <strong>Rate Limit</strong>
+                <span>Rol başına dakikada 6 yazma isteği. Limit aşılırsa 429 + backoff.</span>
+              </div>
+              <div class="spec-item">
+                <strong>CSRF</strong>
+                <span>SameSite=Lax oturum çerezi + form token doğrulaması.</span>
+              </div>
+              <div class="spec-item">
+                <strong>Denetim</strong>
+                <span>session_events tablosuna staffId, ip, userAgent, ts alanları yazılır.</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>QR Uzatma Jetonları</h2>
+            <p>
+              QR tokenları tek kullanımlık ve 5 dk içinde zaman aşımına uğrar. Toplam uzatma
+              limiti backend tarafından doğrulanır. Cashier rolü bu akışı göremez.
+            </p>
+          </div>
+          <div class="panel-body">
+            <div class="form-footer" style="justify-content: space-between;">
+              <button id="generateQr" class="btn-secondary" type="button">Yeni QR Jetonu Oluştur</button>
+              <span class="pill">TTL ≤ 5 dk · Tek Kullanımlık</span>
+            </div>
+            <div class="qr-list" id="qrList" aria-live="polite"></div>
+          </div>
+        </article>
+      </section>
+
+      <section class="column">
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Aktif Oturumlar</h2>
+            <p>
+              Zaman otoritesi sunucu olup tüm sayaçlar drift olmaması için saniyelik
+              doğrulama yapar. Paralel mutasyonlar 409 ile reddedilir.
+            </p>
+          </div>
+          <div class="panel-body">
+            <div class="legend" aria-hidden="true">
+              <span><span class="status-dot" style="background: var(--ok);"></span>Aktif</span>
+              <span><span class="status-dot" style="background: var(--paused);"></span>Duraklatıldı</span>
+              <span><span class="status-dot" style="background: var(--warn);"></span>Son 5 dk</span>
+              <span><span class="status-dot" style="background: var(--danger);"></span>Süre Doldu</span>
+            </div>
+            <div id="sessionList" class="session-list" aria-live="polite"></div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Ödeme Önizleme</h2>
+            <p>
+              Ödeme ekranı yalnızca backend quote verisini kullanır. Tarife versiyonu
+              değiştiğinde breakdown otomatik yenilenir ve KDV dahil toplam hesaplanır.
+            </p>
+          </div>
+          <div class="panel-body">
+            <div class="payment-breakdown" id="paymentView">
+              <div>
+                <div class="meta-label">Tarife Versiyonu</div>
+                <div class="meta-value" id="tariffVersion">calcVersion v2025.10</div>
+              </div>
+              <table class="breakdown-table" aria-describedby="tariffVersion">
+                <thead>
+                  <tr>
+                    <th>Alan</th>
+                    <th>Ham Süre (dk)</th>
+                    <th>Faturalanan (dk)</th>
+                    <th>Birim Fiyat</th>
+                    <th>Ara Toplam</th>
+                  </tr>
+                </thead>
+                <tbody id="breakdownBody">
+                  <tr>
+                    <td colspan="5" style="text-align: center; color: var(--text-secondary);">
+                      Sonlandırılan oturum breakdown burada görünecek.
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+              <div class="meta-grid">
+                <div class="meta-item">
+                  <span class="meta-label">KDV Oranı</span>
+                  <span class="meta-value" id="vatRate">%10</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">İndirim</span>
+                  <span class="meta-value" id="discount">0 ₺</span>
+                </div>
+                <div class="meta-item">
+                  <span class="meta-label">Idempotency-Key</span>
+                  <span class="meta-value" id="paymentKey">-</span>
+                </div>
+              </div>
+              <div class="payment-total">
+                <span>Genel Toplam</span>
+                <span id="grandTotal">0 ₺</span>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-header">
+            <h2>Denetim Günlüğü</h2>
+            <p>
+              Tüm mutasyonlar staffId, idempotencyKey ve zaman damgası ile kaydedilir.
+              Paralel mutasyonlarda 409 üreten olaylar da loglanır.
+            </p>
+          </div>
+          <div class="panel-body">
+            <ul class="audit-log" id="auditLog" aria-live="polite"></ul>
+          </div>
+        </article>
+      </section>
+    </main>
+
+    <div class="toast-region" id="toastRegion" role="status" aria-live="polite"></div>
+
+    <script>
+      (() => {
+        const state = {
+          role: "staff",
+          sessions: [],
+          sessionSequence: 2048,
+          qrTokens: [],
+        };
+
+        const tariffs = {
+          version: "calcVersion v2025.10",
+          vatRate: 0.1,
+          grace: 5,
+          min: 15,
+          max: 120,
+          step: 5,
+          areas: {
+            Trambolin: 3.5,
+            "Kum Parkı": 2.0,
+            "Top Havuzu": 2.8,
+          },
+        };
+
+        const permissions = {
+          staff: new Set(["extend", "pause", "resume", "finish", "qr"]),
+          manager: new Set(["extend", "pause", "resume", "finish", "publish", "qr", "payment"]),
+          cashier: new Set(["finish", "payment"]),
+        };
+
+        const sessionList = document.getElementById("sessionList");
+        const form = document.getElementById("sessionForm");
+        const auditLog = document.getElementById("auditLog");
+        const roleSelect = document.getElementById("roleSelect");
+        const qrButton = document.getElementById("generateQr");
+        const qrList = document.getElementById("qrList");
+        const paymentBody = document.getElementById("breakdownBody");
+        const paymentTotal = document.getElementById("grandTotal");
+        const paymentKey = document.getElementById("paymentKey");
+        const tariffVersion = document.getElementById("tariffVersion");
+        const vatRateEl = document.getElementById("vatRate");
+        const toastRegion = document.getElementById("toastRegion");
+        const discountEl = document.getElementById("discount");
+
+        const sessionCardMap = new Map();
+        const cryptoApi = window.crypto || window.msCrypto;
+
+        function safeUUID() {
+          if (cryptoApi && typeof cryptoApi.randomUUID === "function") {
+            return cryptoApi.randomUUID();
+          }
+          let d = Date.now();
+          return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+            const r = (d + Math.random() * 16) % 16 | 0;
+            d = Math.floor(d / 16);
+            return (c === "x" ? r : (r & 0x3) | 0x8).toString(16);
+          });
+        }
+
+        function maskPhone(phone) {
+          const normalized = phone.replace(/[^0-9]/g, "");
+          if (state.role === "manager" || state.role === "cashier") {
+            return phone;
+          }
+          if (normalized.length < 4) {
+            return "***";
+          }
+          const visible = normalized.slice(-2);
+          return "*** *** **" + visible;
+        }
+
+        function generateId(prefix) {
+          return `${prefix}-${safeUUID().slice(0, 8)}`;
+        }
+
+        function nextKidId() {
+          state.sessionSequence += 1;
+          return `K-${state.sessionSequence}`;
+        }
+
+        function logEvent({ title, description, sessionId, level = "info", idempotencyKey }) {
+          const entry = document.createElement("li");
+          entry.className = "audit-entry";
+          const titleEl = document.createElement("span");
+          titleEl.className = "title";
+          titleEl.textContent = title;
+          const metaEl = document.createElement("span");
+          metaEl.className = "meta";
+          const ts = new Date();
+          const parts = [ts.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit", second: "2-digit" })];
+          if (sessionId) parts.push(`session=${sessionId}`);
+          parts.push(`role=${state.role}`);
+          if (idempotencyKey) parts.push(`idempotencyKey=${idempotencyKey}`);
+          metaEl.textContent = parts.join(" | ");
+          const descEl = document.createElement("span");
+          descEl.style.color = level === "danger" ? "#fecaca" : "var(--text-secondary)";
+          descEl.textContent = description;
+          entry.append(titleEl, metaEl, descEl);
+          auditLog.prepend(entry);
+          while (auditLog.children.length > 25) {
+            auditLog.removeChild(auditLog.lastChild);
+          }
+        }
+
+        function showToast(message, tone = "ok") {
+          const toast = document.createElement("div");
+          toast.className = `toast ${tone}`;
+          toast.textContent = message;
+          toastRegion.append(toast);
+          setTimeout(() => {
+            toast.style.opacity = "0";
+            toast.style.transform = "translateY(-8px)";
+          }, 10);
+          setTimeout(() => toast.remove(), 4200);
+        }
+
+        function createSessionCard(session) {
+          const card = document.createElement("div");
+          card.className = "session-card";
+
+          const ring = document.createElement("div");
+          ring.className = "progress-ring";
+          const timeEl = document.createElement("span");
+          timeEl.className = "progress-time";
+          timeEl.textContent = formatRemaining(session.remainingSeconds);
+          ring.append(timeEl);
+
+          const meta = document.createElement("div");
+          meta.className = "session-meta";
+
+          const title = document.createElement("h3");
+          title.textContent = `${session.kidName} · ${session.kidId}`;
+
+          const tags = document.createElement("div");
+          tags.className = "tags";
+          const statusTag = document.createElement("span");
+          statusTag.className = `tag ok`;
+          statusTag.textContent = "Aktif";
+          tags.append(statusTag);
+
+          const metaGrid = document.createElement("div");
+          metaGrid.className = "meta-grid";
+
+          const items = [
+            { label: "Alan", value: session.area },
+            { label: "Planlanan", value: `${session.allocatedMinutes} dk` },
+            { label: "Başlangıç", value: new Date(session.startTime).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" }) },
+            { label: "Ebeveyn", value: session.parentName },
+            { label: "Telefon", value: maskPhone(session.parentPhone) },
+            { label: "Idempotency", value: session.idempotencyKey.slice(0, 12) + "…" },
+          ];
+
+          items.forEach((item) => {
+            const wrap = document.createElement("div");
+            wrap.className = "meta-item";
+            const label = document.createElement("span");
+            label.className = "meta-label";
+            label.textContent = item.label;
+            const value = document.createElement("span");
+            value.className = "meta-value";
+            value.textContent = item.value;
+            wrap.append(label, value);
+            metaGrid.append(wrap);
+          });
+
+          const controls = document.createElement("div");
+          controls.className = "controls";
+
+          const extendBtn = document.createElement("button");
+          extendBtn.type = "button";
+          extendBtn.className = "btn-secondary";
+          extendBtn.textContent = "+10 dk Uzat";
+          extendBtn.addEventListener("click", () => extendSession(session, 10));
+
+          const pauseBtn = document.createElement("button");
+          pauseBtn.type = "button";
+          pauseBtn.className = "btn-secondary";
+          pauseBtn.textContent = "Duraklat";
+          pauseBtn.addEventListener("click", () => togglePause(session));
+
+          const finishBtn = document.createElement("button");
+          finishBtn.type = "button";
+          finishBtn.className = "btn-primary";
+          finishBtn.textContent = "Oturumu Bitir";
+          finishBtn.addEventListener("click", () => finishSession(session));
+
+          controls.append(extendBtn, pauseBtn, finishBtn);
+
+          meta.append(title, tags, metaGrid, controls);
+          card.append(ring, meta);
+          sessionList.append(card);
+
+          sessionCardMap.set(session.id, {
+            card,
+            ring,
+            timeEl,
+            statusTag,
+            metaGrid,
+            extendBtn,
+            pauseBtn,
+            finishBtn,
+          });
+        }
+
+        function updateSessionCard(session) {
+          const ref = sessionCardMap.get(session.id);
+          if (!ref) return;
+          const { card, ring, timeEl, statusTag, metaGrid, extendBtn, pauseBtn, finishBtn } = ref;
+          timeEl.textContent = formatRemaining(session.remainingSeconds);
+          const progress = Math.max(0, Math.min(1, session.elapsedSeconds / session.totalAllocatedSeconds));
+          const degrees = progress * 360;
+          ring.style.background = `conic-gradient(#22d3ee ${degrees}deg, rgba(255, 255, 255, 0.08) ${degrees}deg)`;
+
+          const phoneItem = metaGrid.children[4].querySelector(".meta-value");
+          phoneItem.textContent = maskPhone(session.parentPhone);
+
+          metaGrid.children[1].querySelector(".meta-value").textContent = `${Math.round(session.totalAllocatedSeconds / 60)} dk`;
+
+          const statusInfo = getStatusInfo(session);
+          statusTag.className = `tag ${statusInfo.tag}`;
+          statusTag.textContent = statusInfo.text;
+
+          card.style.borderColor = statusInfo.border;
+          if (!permissions[state.role].has("extend") || session.status === "finished") {
+            extendBtn.disabled = true;
+          } else {
+            extendBtn.disabled = false;
+          }
+
+          if (!permissions[state.role].has("pause") || session.status === "finished") {
+            pauseBtn.disabled = true;
+          } else {
+            pauseBtn.disabled = false;
+          }
+
+          pauseBtn.textContent = session.status === "paused" ? "Devam Et" : "Duraklat";
+
+          if (!permissions[state.role].has("finish") || session.status === "finished") {
+            finishBtn.disabled = true;
+          } else {
+            finishBtn.disabled = false;
+          }
+        }
+
+        function getStatusInfo(session) {
+          if (session.status === "finished") {
+            return { text: "Tamamlandı", tag: "ok", border: "rgba(34, 197, 94, 0.35)" };
+          }
+          if (session.status === "paused") {
+            return { text: "Duraklatıldı", tag: "paused", border: "rgba(37, 99, 235, 0.45)" };
+          }
+          if (session.remainingSeconds <= 0) {
+            return { text: "Süre Doldu", tag: "danger", border: "rgba(220, 38, 38, 0.35)" };
+          }
+          if (session.remainingSeconds <= 5 * 60) {
+            return { text: "Son 5 dk", tag: "warn", border: "rgba(245, 158, 11, 0.35)" };
+          }
+          return { text: "Aktif", tag: "ok", border: "rgba(34, 197, 94, 0.25)" };
+        }
+
+        function formatRemaining(seconds) {
+          if (seconds < 0) seconds = 0;
+          const h = Math.floor(seconds / 3600);
+          const m = Math.floor((seconds % 3600) / 60);
+          const s = seconds % 60;
+          if (h > 0) {
+            return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+          }
+          return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+        }
+
+        function extendSession(session, minutes) {
+          if (!permissions[state.role].has("extend")) {
+            showToast("Rolünüz uzatma için yetkili değil", "warn");
+            return;
+          }
+          if (session.status === "finished") return;
+          const seconds = minutes * 60;
+          session.totalAllocatedSeconds += seconds;
+          session.remainingSeconds += seconds;
+          session.history.push({ action: "extend", minutes, at: Date.now() });
+          const key = generateId("extend");
+          logEvent({
+            title: "Oturum Uzatıldı",
+            description: `${session.kidId} için +${minutes} dk eklendi.`,
+            sessionId: session.kidId,
+            idempotencyKey: key,
+          });
+          showToast(`${session.kidName} oturumu +${minutes} dk uzatıldı.`);
+          updateSessionCard(session);
+        }
+
+        function togglePause(session) {
+          if (!permissions[state.role].has("pause")) {
+            showToast("Rolünüz bu işlem için yetkili değil", "warn");
+            return;
+          }
+          if (session.status === "finished") return;
+          const key = generateId("pause");
+          if (session.status === "paused") {
+            session.status = "active";
+            logEvent({
+              title: "Oturum Devam Etti",
+              description: `${session.kidId} oturumu yeniden başlatıldı.`,
+              sessionId: session.kidId,
+              idempotencyKey: key,
+            });
+            showToast(`${session.kidName} oturumu devam ediyor.`);
+          } else {
+            session.status = "paused";
+            logEvent({
+              title: "Oturum Duraklatıldı",
+              description: `${session.kidId} oturumu duraklatıldı.`,
+              sessionId: session.kidId,
+              idempotencyKey: key,
+            });
+            showToast(`${session.kidName} oturumu duraklatıldı.`, "warn");
+          }
+          updateSessionCard(session);
+        }
+
+        function finishSession(session) {
+          if (!permissions[state.role].has("finish")) {
+            showToast("Rolünüz sonlandırma için yetkili değil", "warn");
+            return;
+          }
+          if (session.status === "finished") return;
+          session.status = "finished";
+          session.remainingSeconds = 0;
+          const key = generateId("finish");
+          const billing = calculateBilling(session);
+          renderPayment(billing, key);
+          logEvent({
+            title: "Oturum Tamamlandı",
+            description: `${session.kidId} oturumu ${billing.billableMinutes} dk faturalandı.`,
+            sessionId: session.kidId,
+            idempotencyKey: key,
+          });
+          showToast(`${session.kidName} oturumu tamamlandı.`);
+          updateSessionCard(session);
+        }
+
+        function calculateBilling(session) {
+          const minutesRaw = Math.max(0, Math.round(session.elapsedSeconds / 60));
+          let billable = minutesRaw;
+          if (billable <= tariffs.grace) {
+            billable = 0;
+          } else {
+            billable = Math.ceil(billable / tariffs.step) * tariffs.step;
+            billable = Math.max(billable, tariffs.min);
+            billable = Math.min(billable, tariffs.max);
+          }
+          const rate = tariffs.areas[session.area] ?? 0;
+          const subtotal = billable * rate;
+          const vat = subtotal * tariffs.vatRate;
+          const total = subtotal + vat;
+          return {
+            area: session.area,
+            minutesRaw,
+            billableMinutes: billable,
+            rate,
+            subtotal,
+            vat,
+            total,
+            kidId: session.kidId,
+            kidName: session.kidName,
+          };
+        }
+
+        function renderPayment(billing, key) {
+          tariffVersion.textContent = `${tariffs.version} · ${new Date().toLocaleDateString("tr-TR")}`;
+          vatRateEl.textContent = `%${(tariffs.vatRate * 100).toFixed(0)}`;
+          paymentKey.textContent = key;
+          paymentBody.innerHTML = "";
+          const row = document.createElement("tr");
+          const cells = [
+            billing.area,
+            `${billing.minutesRaw} dk`,
+            `${billing.billableMinutes} dk`,
+            `${billing.rate.toFixed(2)} ₺`,
+            `${billing.subtotal.toFixed(2)} ₺`,
+          ];
+          cells.forEach((value) => {
+            const td = document.createElement("td");
+            td.textContent = value;
+            row.append(td);
+          });
+          paymentBody.append(row);
+          const vatRow = document.createElement("tr");
+          const vatCell = document.createElement("td");
+          vatCell.colSpan = 4;
+          vatCell.textContent = "KDV";
+          const vatValue = document.createElement("td");
+          vatValue.textContent = `${billing.vat.toFixed(2)} ₺`;
+          vatRow.append(vatCell, vatValue);
+          paymentBody.append(vatRow);
+          discountEl.textContent = "0 ₺";
+          paymentTotal.textContent = `${billing.total.toFixed(2)} ₺`;
+        }
+
+        function tickSessions() {
+          state.sessions.forEach((session) => {
+            if (session.status === "active") {
+              session.elapsedSeconds += 1;
+              session.remainingSeconds -= 1;
+              if (session.remainingSeconds < 0) {
+                session.remainingSeconds = 0;
+              }
+            }
+            updateSessionCard(session);
+          });
+        }
+
+        function handleRoleChange() {
+          state.role = roleSelect.value;
+          sessionCardMap.forEach((ref, sessionId) => {
+            const session = state.sessions.find((s) => s.id === sessionId);
+            if (session) updateSessionCard(session);
+          });
+          renderQrList();
+          const toastMsg = state.role === "cashier" ? "Ödeme ve bitirme akışları yetkilendirildi." : `${state.role.toUpperCase()} hakları aktif.`;
+          showToast(toastMsg);
+        }
+
+        function handleFormSubmit(event) {
+          event.preventDefault();
+          const formData = new FormData(form);
+          const kidName = String(formData.get("kidName") || "").trim();
+          const parentName = String(formData.get("parentName") || "").trim();
+          const parentPhone = String(formData.get("parentPhone") || "").trim();
+          const area = String(formData.get("area"));
+          const duration = Number(formData.get("duration"));
+          const notes = String(formData.get("notes") || "").trim();
+          if (!kidName || !parentName || !parentPhone || Number.isNaN(duration)) {
+            showToast("Lütfen tüm zorunlu alanları doldurun", "warn");
+            return;
+          }
+          const session = {
+            id: safeUUID(),
+            kidId: nextKidId(),
+            kidName,
+            parentName,
+            parentPhone,
+            area,
+            notes,
+            status: "active",
+            startTime: Date.now(),
+            allocatedMinutes: duration,
+            totalAllocatedSeconds: duration * 60,
+            elapsedSeconds: 0,
+            remainingSeconds: duration * 60,
+            history: [],
+            idempotencyKey: generateId("start"),
+          };
+          state.sessions.push(session);
+          createSessionCard(session);
+          updateSessionCard(session);
+          logEvent({
+            title: "Oturum Başlatıldı",
+            description: `${session.kidId} ${session.area} alanında ${duration} dk için açıldı.`,
+            sessionId: session.kidId,
+            idempotencyKey: session.idempotencyKey,
+          });
+          showToast(`${session.kidName} için oturum oluşturuldu.`);
+          form.reset();
+        }
+
+        function renderQrList() {
+          qrList.innerHTML = "";
+          const allowed = permissions[state.role].has("qr");
+          qrButton.disabled = !allowed;
+          if (!allowed) {
+            const notice = document.createElement("div");
+            notice.className = "qr-item";
+            notice.textContent = "Bu rol QR tokenları görüntüleyemez.";
+            qrList.append(notice);
+            return;
+          }
+          if (state.qrTokens.length === 0) {
+            const empty = document.createElement("div");
+            empty.className = "qr-item";
+            empty.textContent = "Henüz oluşturulmuş token yok.";
+            qrList.append(empty);
+            return;
+          }
+          state.qrTokens.forEach((token) => {
+            const item = document.createElement("div");
+            item.className = "qr-item";
+            const code = document.createElement("strong");
+            code.textContent = token.code;
+            const ttl = Math.max(0, Math.floor((token.expiresAt - Date.now()) / 1000));
+            const meta = document.createElement("span");
+            meta.className = "meta";
+            meta.textContent = `TTL: ${ttl} sn | Uzatma limiti: ${token.extendLimit} dk`;
+            item.append(code, meta);
+            if (ttl <= 0) {
+              item.style.opacity = "0.6";
+              meta.textContent += " · Süresi doldu";
+            }
+            qrList.append(item);
+          });
+        }
+
+        function handleGenerateQr() {
+          if (!permissions[state.role].has("qr")) {
+            showToast("Rolünüz token üretmeye yetkili değil", "warn");
+            return;
+          }
+          const token = {
+            code: generateId("QR").toUpperCase(),
+            createdAt: Date.now(),
+            expiresAt: Date.now() + 5 * 60 * 1000,
+            extendLimit: 15,
+          };
+          state.qrTokens.unshift(token);
+          if (state.qrTokens.length > 5) {
+            state.qrTokens.pop();
+          }
+          logEvent({
+            title: "QR Token Üretildi",
+            description: `${token.code} tek kullanımlık uzatma jetonu oluşturuldu.`,
+            idempotencyKey: generateId("qr"),
+          });
+          showToast("Yeni QR token üretildi.");
+          renderQrList();
+        }
+
+        function seedSessions() {
+          const samples = [
+            {
+              kidName: "Atlas",
+              parentName: "Seda K.",
+              parentPhone: "0532 123 45 67",
+              area: "Trambolin",
+              duration: 45,
+              elapsed: 15 * 60,
+              status: "active",
+            },
+            {
+              kidName: "Mira",
+              parentName: "Okan D.",
+              parentPhone: "0543 765 43 21",
+              area: "Kum Parkı",
+              duration: 60,
+              elapsed: 40 * 60,
+              status: "paused",
+            },
+          ];
+          samples.forEach((sample) => {
+            const session = {
+              id: safeUUID(),
+              kidId: nextKidId(),
+              kidName: sample.kidName,
+              parentName: sample.parentName,
+              parentPhone: sample.parentPhone,
+              area: sample.area,
+              notes: "",
+              status: sample.status,
+              startTime: Date.now() - sample.elapsed * 1000,
+              allocatedMinutes: sample.duration,
+              totalAllocatedSeconds: sample.duration * 60,
+              elapsedSeconds: sample.elapsed,
+              remainingSeconds: sample.duration * 60 - sample.elapsed,
+              history: [],
+              idempotencyKey: generateId("seed"),
+            };
+            if (session.remainingSeconds < 0) session.remainingSeconds = 0;
+            state.sessions.push(session);
+            createSessionCard(session);
+            updateSessionCard(session);
+          });
+        }
+
+        roleSelect.addEventListener("change", handleRoleChange);
+        form.addEventListener("submit", handleFormSubmit);
+        qrButton.addEventListener("click", handleGenerateQr);
+
+        seedSessions();
+        renderQrList();
+        setInterval(tickSessions, 1000);
+        setInterval(renderQrList, 5000);
+      })();
+    </script>
+  </body>
+</html>
